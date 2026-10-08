@@ -37,6 +37,9 @@ listed. If the database is missing, the list is empty.
 - **macOS** — folder-open uses `open`.
 - **Linux** — folder-open uses `xdg-open`.
 - **Windows** — folder-open uses `explorer`.
+- **WSL** — `xdg-open` is usually absent, so folder-open converts the path with
+  `wslpath -w` and hands it to `explorer.exe` (a `\\wsl.localhost\<distro>\…`
+  UNC path), opening the folder in Windows Explorer.
 
 ## Run
 

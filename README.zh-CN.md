@@ -28,6 +28,8 @@
 - **macOS** —— 打开文件夹使用 `open`。
 - **Linux** —— 打开文件夹使用 `xdg-open`。
 - **Windows** —— 打开文件夹使用 `explorer`。
+- **WSL** —— 通常没有 `xdg-open`，因此会用 `wslpath -w` 转换路径后交给
+  `explorer.exe`（`\\wsl.localhost\<distro>\…` UNC 路径），在 Windows 资源管理器中打开该文件夹。
 
 ## 运行
 
