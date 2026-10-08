@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readMeta } from './meta.js';
 import { opencodeDbPath } from './opencode-path.js';
-import { cdPrefix } from './sources/_shared.js';
+import { resumeCommand } from './sources/_shared.js';
 
 const file = opencodeDbPath();
 const sessionId = /^ses_[A-Za-z0-9]+$/;
@@ -30,7 +30,8 @@ function sessionRow(row, metadata) {
   return {
     id: row.id, projectId: projectId(row), title: row.title,
     directory: row.directory, lastActivity: iso(row.time_updated),
-    messageCount: row.message_count, resume: `${cdPrefix(row.directory)}opencode --session ${row.id}`,
+    messageCount: row.message_count, resume: resumeCommand(row.directory, row.id),
+    ...(process.platform === 'win32' ? { resumeShell: 'PowerShell' } : {}),
     ...metadata.sessions[row.id],
   };
 }
@@ -38,6 +39,23 @@ function sessionRow(row, metadata) {
 const sessionQuery = `SELECT s.id, s.project_id, s.title, s.directory, s.time_updated,
   (SELECT count(*) FROM message WHERE session_id=s.id) AS message_count
   FROM session s WHERE s.parent_id IS NULL AND EXISTS (SELECT 1 FROM message WHERE session_id=s.id)`;
+
+export function finalAnswerIds(rows) {
+  const ids = new Set();
+  let answer;
+  let inTurn = false;
+  for (const row of rows) {
+    if (row.role === 'user') {
+      if (answer) ids.add(answer);
+      answer = null;
+      inTurn = true;
+    } else if (inTurn && row.role === 'assistant' && row.hasText) {
+      answer = row.id;
+    }
+  }
+  if (answer) ids.add(answer);
+  return ids;
+}
 
 export function archiveIndex() {
   const d = db();
@@ -64,23 +82,33 @@ export function archiveIndex() {
   return { projects: [...projects.values()].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.lastActivity || '').localeCompare(a.lastActivity || '')), sessions };
 }
 
-export function sessionMessages(id, { cursor, limit = 40 } = {}) {
+export function sessionMessages(id, { cursor, limit = 40, from } = {}) {
   valid(id);
   const d = db();
   if (!d) throw new Error('database unavailable');
   const s = d.prepare('SELECT id, title, directory, project_id FROM session WHERE id=? AND parent_id IS NULL').get(id);
   if (!s) throw new Error('session not found');
   const size = Math.min(100, Math.max(1, Number(limit) || 40));
-  let boundary = null;
-  if (cursor) {
-    boundary = d.prepare('SELECT time_created, id FROM message WHERE id=? AND session_id=?').get(cursor, id);
-    if (!boundary) throw new Error('invalid cursor');
-  }
-  const rows = d.prepare(`SELECT id, data, time_created FROM message WHERE session_id=?
-    ${boundary ? 'AND (time_created < ? OR (time_created = ? AND id < ?))' : ''}
-    ORDER BY time_created DESC, id DESC LIMIT ?`).all(...(boundary ? [id, boundary.time_created, boundary.time_created, boundary.id, size + 1] : [id, size + 1]));
-  const more = rows.length > size;
+  const boundary = cursor || from
+    ? d.prepare('SELECT time_created, id FROM message WHERE id=? AND session_id=?').get(cursor || from, id)
+    : null;
+  if ((cursor || from) && !boundary) throw new Error('message not found');
+  const rows = from
+    ? d.prepare(`SELECT id, data, time_created FROM message WHERE session_id=?
+      AND (time_created > ? OR (time_created = ? AND id >= ?))
+      ORDER BY time_created, id LIMIT ?`).all(id, boundary.time_created, boundary.time_created, boundary.id, size)
+    : d.prepare(`SELECT id, data, time_created FROM message WHERE session_id=?
+      ${boundary ? 'AND (time_created < ? OR (time_created = ? AND id < ?))' : ''}
+      ORDER BY time_created DESC, id DESC LIMIT ?`).all(...(boundary ? [id, boundary.time_created, boundary.time_created, boundary.id, size + 1] : [id, size + 1]));
+  const more = from
+    ? !!d.prepare(`SELECT 1 FROM message WHERE session_id=? AND (time_created < ? OR (time_created = ? AND id < ?)) LIMIT 1`)
+      .get(id, boundary.time_created, boundary.time_created, boundary.id)
+    : rows.length > size;
   const page = rows.slice(0, size);
+  const finalAnswers = finalAnswerIds(d.prepare(`SELECT m.id, json_extract(m.data, '$.role') AS role,
+    EXISTS (SELECT 1 FROM part p WHERE p.message_id=m.id AND json_extract(p.data, '$.type')='text'
+      AND trim(coalesce(json_extract(p.data, '$.text'), '')) != '') AS hasText
+    FROM message m WHERE m.session_id=? ORDER BY m.time_created, m.id`).all(id));
   const messages = page.map((m) => {
     const parts = d.prepare('SELECT data FROM part WHERE message_id=? ORDER BY time_created, id').all(m.id)
       .map(({ data }) => parse(data)).flatMap((p) => {
@@ -89,12 +117,16 @@ export function sessionMessages(id, { cursor, limit = 40 } = {}) {
         if (p.type === 'file') return [{ type: 'file', text: p.filename || p.url || '附件' }];
         return [];
       });
-    return { id: m.id, role: parse(m.data).role === 'user' ? 'user' : 'assistant', createdAt: iso(m.time_created), parts };
-  }).reverse();
+    return { id: m.id, role: parse(m.data).role === 'user' ? 'user' : 'assistant', createdAt: iso(m.time_created), parts,
+      finalAnswer: finalAnswers.has(m.id) };
+  });
+  if (!from) messages.reverse();
   return {
     id, title: s.title, projectId: `project:${s.project_id}`, directory: s.directory,
-    resume: `${cdPrefix(s.directory)}opencode --session ${id}`, messages,
-    hasMore: more, nextCursor: more ? page[page.length - 1].id : null,
+    resume: resumeCommand(s.directory, id),
+    ...(process.platform === 'win32' ? { resumeShell: 'PowerShell' } : {}),
+    messages,
+    hasMore: more, nextCursor: more ? (from ? boundary.id : page[page.length - 1].id) : null,
   };
 }
 
@@ -112,19 +144,7 @@ export function questionToc(id) {
 }
 
 export function aroundMessage(id, messageId) {
-  valid(id);
-  const d = db();
-  const target = d?.prepare('SELECT id FROM message WHERE id=? AND session_id=?').get(messageId, id);
-  if (!target) throw new Error('message not found');
-  // Load pages until the target is present, preserving the usual cursor contract.
-  let cursor;
-  let result;
-  do {
-    result = sessionMessages(id, { cursor, limit: 100 });
-    if (result.messages.some((m) => m.id === messageId)) return { ...result, jumped: true };
-    cursor = result.nextCursor;
-  } while (cursor);
-  throw new Error('message not found');
+  return { ...sessionMessages(id, { from: messageId, limit: 100 }), jumped: true };
 }
 
 export function archiveSearch(query, { project = '', scope = 'all', limit = 100 } = {}) {

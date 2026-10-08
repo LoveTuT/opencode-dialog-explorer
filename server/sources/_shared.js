@@ -61,7 +61,9 @@ export function makeEntry({
   };
 }
 
-// Quote a cwd for a shell `cd`, only when we actually have one.
-export function cdPrefix(cwd) {
-  return cwd ? `cd ${JSON.stringify(cwd)} && ` : '';
+// Pass the project directly to OpenCode so Windows need not switch drives with `cd`.
+export function resumeCommand(cwd, id, platform = process.platform) {
+  if (!cwd) return `opencode --session ${id}`;
+  if (platform === 'win32') return `opencode '${cwd.replaceAll("'", "''")}' --session ${id}`;
+  return `opencode '${cwd.replaceAll("'", "'\\''")}' --session ${id}`;
 }

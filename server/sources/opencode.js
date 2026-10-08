@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { opencodeDbPath } from '../opencode-path.js';
-import { makeEntry, cdPrefix, toolUseLine, toolResultLine, thinkingLine, clip } from './_shared.js';
+import { makeEntry, resumeCommand, toolUseLine, toolResultLine, thinkingLine, clip } from './_shared.js';
 
 const DB_PATH = opencodeDbPath();
 export const source = 'opencode';
@@ -63,7 +63,7 @@ export async function list() {
       messageCount: c,
       lastActivity: s.time_updated ? new Date(Number(s.time_updated)).toISOString() : null,
       mtimeMs: Number(s.time_updated) || 0,
-      resume: `${cdPrefix(cwd)}opencode --session ${s.id}`,
+      resume: resumeCommand(cwd, s.id),
     }));
   }
   return out;
@@ -96,7 +96,7 @@ export async function detail(ref, lastN = 30) {
   }
   return {
     source, id: ref, title: s.title || '(untitled)', projectPath: cwd, gitBranch: null,
-    resume: `${cdPrefix(cwd)}opencode --session ${ref}`,
+    resume: resumeCommand(cwd, ref),
     messages,
   };
 }

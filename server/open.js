@@ -10,12 +10,14 @@
 //  - macOS:   `open`
 //  - Windows: `explorer`
 //  - Linux:   `xdg-open`
-//  - WSL:     `xdg-open` is usually absent, so we hand a Windows-formatted path
-//             (via `wslpath -w`) to `explorer.exe` so the folder opens in the
-//             Windows Explorer alongside the distro.
+//  - WSL:     hand Windows-formatted paths (via `wslpath -w`) to a PowerShell
+//             helper that opens Explorer and tries to bring its window forward.
 
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const focusScript = fileURLToPath(new URL('./focus-explorer.ps1', import.meta.url));
 
 function isWSL() {
   if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
@@ -53,9 +55,11 @@ function opener(target) {
       // tolerate below.)
       return { cmd: 'explorer', args: [target] };
     default:
-      // Linux / *BSD — but WSL Linux has no usable xdg-open, so route via
-      // Windows Explorer with a converted path.
-      if (isWSL()) return { cmd: 'explorer.exe', args: [toWindowsPath(target)] };
+      // Linux / *BSD — WSL opens Windows Explorer through the focus helper.
+      if (isWSL()) return {
+        cmd: 'powershell.exe',
+        args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', toWindowsPath(focusScript), '-Target', toWindowsPath(target)],
+      };
       return { cmd: 'xdg-open', args: [target] };
   }
 }

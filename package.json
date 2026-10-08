@@ -26,7 +26,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/opencode-path-test.mjs && node scripts/smoke-test.mjs && node scripts/archive-test.mjs",
+    "test": "node scripts/opencode-path-test.mjs && node scripts/resume-test.mjs && node scripts/smoke-test.mjs && node scripts/archive-test.mjs",
     "agent:dev": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" start --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
     "agent:stop": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" stop --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
     "agent:restart": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" restart --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",

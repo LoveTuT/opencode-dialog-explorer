@@ -18,7 +18,9 @@ and focused on a single source: the local opencode SQLite database.
   a project, including by working directory when a project has several.
 - **Read the full history.** Load older messages in pages. Markdown is rendered
   for reading; tool calls and reasoning remain available in collapsible sections.
-  Enable **Q&A only** to hide tool calls and reasoning while reading.
+  Enable **Q&A only** to hide tool calls, reasoning, and intermediate replies,
+  keeping the last text answer for each question. The setting is remembered in
+  this browser across projects, sessions, and reloads.
 - **Jump between questions.** A compact, scrollable question rail previews each
   user question, follows your reading position, and loads earlier history when
   you jump to a question that is not on the current page.
@@ -80,15 +82,19 @@ private transcripts and is not intended for network access.
 The app has no telemetry or external CDN; the UI requests data from its local
 server. Session IDs and folder paths are validated before use. Folder opening
 uses the OS opener without a shell (`open` on macOS, `xdg-open` on Linux,
-`explorer` on Windows, and `explorer.exe` with a WSL path on WSL). An “open
+`explorer` on Windows, and a PowerShell helper on WSL that opens Explorer with
+a converted path and attempts to focus its window). Windows may still deny
+foreground activation. An “open
 folder” response means the command was attempted, not that the file manager
 necessarily displayed the folder.
 
-To resume a session, use the copied command in your terminal:
+To resume a session, run the copied command in the same environment where the session lives. On Windows the generated command targets PowerShell (not CMD); macOS, Linux, and WSL use a POSIX shell:
 
-```bash
-cd "<session working directory>" && opencode --session <session-id>
+```sh
+opencode '<session working directory>' --session <session-id>
 ```
+
+Passing the project directory directly avoids Windows drive-switching issues with `cd`. The original directory must still exist; native Windows paths cannot be used directly in WSL (or vice versa).
 
 ## How it works
 
