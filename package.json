@@ -2,7 +2,7 @@
   "name": "opencode-dialog-explorer",
   "private": true,
   "version": "1.0.0",
-  "description": "Local viewer for your opencode conversations — browse, search, and resume sessions from ~/.local/share/opencode/opencode.db. Nothing leaves your machine.",
+  "description": "Local, project-first archive for opencode conversations: browse, search, revisit questions, and resume sessions.",
   "license": "MIT",
   "author": "LoveTuT (fork of Daniel Farina)",
   "repository": {
@@ -26,11 +26,19 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/smoke-test.mjs"
+    "test": "node scripts/smoke-test.mjs && node scripts/archive-test.mjs",
+    "agent:dev": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" start --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
+    "agent:stop": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" stop --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
+    "agent:restart": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" restart --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
+    "agent:status": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" status --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
+    "agent:logs": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" logs --project-id opencode-dialog-explorer-e8bc1b40 --profile dev --lines 100",
+    "agent:verify": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" verify --project-id opencode-dialog-explorer-e8bc1b40"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",

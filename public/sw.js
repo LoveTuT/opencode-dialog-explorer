@@ -13,7 +13,7 @@
  * Service Workers, or call navigator.serviceWorker.getRegistrations().
  */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE_NAME = `opencode-dialog-explorer-${VERSION}`;
 const API_CACHE_NAME = `opencode-dialog-explorer-api-${VERSION}`;
 
@@ -21,7 +21,8 @@ const API_CACHE_NAME = `opencode-dialog-explorer-api-${VERSION}`;
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
-  '/icon.svg',
+  '/icon-32.png',
+  '/icon-64.png',
   '/icon-192.png',
   '/icon-512.png',
 ];
