@@ -6,25 +6,7 @@ export const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
   { value: 'messages', label: 'Most messages' },
   { value: 'title', label: 'Title A–Z' },
-  { value: 'tool', label: 'Tool' },
 ];
-
-// Display labels for the `tool` sort. Mirrors server/sources/_shared.js
-// SOURCE_META labels so tools sort by their human-readable name. Unknown
-// sources fall back to their raw key.
-const SOURCE_LABELS = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  grok: 'Grok',
-  opencode: 'opencode',
-  cursor: 'Cursor',
-  gemini: 'Gemini CLI',
-};
-
-function toolLabel(c) {
-  const src = c && c.source ? String(c.source) : '';
-  return SOURCE_LABELS[src] || src;
-}
 
 // Milliseconds for recency comparisons. Prefer lastActivity (ISO string),
 // fall back to mtimeMs, then 0 so missing values sort last in desc order.
@@ -61,14 +43,6 @@ const SORTERS = {
   oldest: (a, b) => activityMs(a) - activityMs(b),
   messages: (a, b) => messageCount(b) - messageCount(a),
   title: cmpTitle,
-  tool: (a, b) => {
-    const t = toolLabel(a).localeCompare(toolLabel(b), undefined, {
-      sensitivity: 'base',
-    });
-    if (t !== 0) return t;
-    // Within the same tool, most recent first.
-    return activityMs(b) - activityMs(a);
-  },
 };
 
 // Returns a NEW sorted array. Unknown sortKey falls back to `recent`.

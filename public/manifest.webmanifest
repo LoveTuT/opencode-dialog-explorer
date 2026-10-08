@@ -1,7 +1,7 @@
 {
-  "name": "AI Session Manager",
+  "name": "opencode Dialog Explorer",
   "short_name": "Sessions",
-  "description": "Browse, search, and resume your local AI coding CLI sessions (Claude Code, Codex, Grok, opencode, Cursor, and more) in one place.",
+  "description": "Browse, search, and resume your local opencode sessions.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -1,9 +1,7 @@
-// Smoke test: exercises every source adapter + the usage/open modules against
-// the real local data, validating the API data contract. Run with `npm test`.
-// Exits non-zero on any failure.
-import os from 'node:os';
+// Smoke test: exercises the opencode source adapter + the open/search modules
+// against the real local data, validating the API data contract. Run with
+// `npm test`. Exits non-zero on any failure.
 import { listConversations, getConversation, SOURCE_META } from '../server/sources/index.js';
-import { getUsage } from '../server/usage.js';
 import { openPath } from '../server/open.js';
 import { searchContent } from '../server/search.js';
 
@@ -69,27 +67,7 @@ for (const src of Object.keys(bySource)) {
   });
 }
 
-// ---- security: sibling-prefix paths (".../projects-evil") must be rejected ----
-const H = os.homedir();
-const SIBLING = {
-  claude: `${H}/.claude/projects-evil/x.jsonl`,
-  codex: `${H}/.codex/sessions-evil/x.jsonl`,
-  grok: `${H}/.grok/sessions-evil/x`,
-  cursor: `${H}/.cursor/projects-evil/x/agent-transcripts/y/y.jsonl`,
-  gemini: `${H}/.gemini/tmp-evil/x/checkpoint-z.json`,
-  copilot: `${H}/.copilot/history-session-state-evil/x.json`,
-  goose: `${H}/.local/share/goose/sessions-evil/x.jsonl`,
-  droid: `${H}/.factory/sessions-evil/x.json`,
-};
-for (const [src, ref] of Object.entries(SIBLING)) {
-  await acheck(`security[${src}] rejects sibling-prefix`, async () => {
-    let leaked = false;
-    try { await getConversation(src, ref, 1); leaked = true; } catch { /* good */ }
-    if (leaked) throw new Error(`read sibling path: ${ref}`);
-  });
-}
-
-// ---- full-content search ----
+// ---- content search ----
 await acheck('content search builds index + matches', async () => {
   const empty = await searchContent('');
   if (empty.keys.length !== 0) throw new Error('empty query should match nothing');
@@ -97,14 +75,6 @@ await acheck('content search builds index + matches', async () => {
   if (all.length > 0 && !(common.keys.length > 0)) throw new Error('index empty / no content matches');
   const narrowed = await searchContent('e zzqqxxnotarealword');
   if (narrowed.keys.length !== 0) throw new Error('multi-word AND did not narrow to 0');
-});
-
-// ---- usage module ----
-await acheck('getUsage shape', async () => {
-  const u = await getUsage();
-  if (!Array.isArray(u)) throw new Error('not an array');
-  if (!u.every((x) => x && typeof x.source === 'string' && 'available' in x))
-    throw new Error('entry missing source/available');
 });
 
 // ---- open module (validation only — never opens a real path) ----

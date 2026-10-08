@@ -1,19 +1,11 @@
-// Registry: every conversation source plugs in here. Adding a new tool is a
-// matter of writing one adapter ({ source, list, detail }) and listing it below.
-import * as claude from './claude.js';
-import * as codex from './codex.js';
-import * as grok from './grok.js';
+// Registry: conversation sources plug in here. This build ships a single
+// source — opencode — so the adapter list is intentionally just one entry.
 import * as opencode from './opencode.js';
-import * as cursor from './cursor.js';
-import * as gemini from './gemini.js';
-import * as copilot from './copilot.js';
-import * as goose from './goose.js';
-import * as droid from './droid.js';
 import { SOURCE_META } from './_shared.js';
 
 export { SOURCE_META };
 
-const ADAPTERS = { claude, codex, grok, opencode, cursor, gemini, copilot, goose, droid };
+const ADAPTERS = { opencode };
 
 // Merge every source into one list, newest first. A failing source is skipped
 // (with a warning) rather than taking the whole response down.

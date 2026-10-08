@@ -1,21 +1,20 @@
 {
-  "name": "ai-session-manager",
+  "name": "opencode-dialog-explorer",
   "private": true,
   "version": "1.0.0",
-  "description": "Local viewer for your AI coding CLI conversations — Claude Code, Codex, Grok, opencode, Cursor, Gemini CLI, Copilot CLI, Goose, and Droid in one searchable list. Nothing leaves your machine.",
+  "description": "Local viewer for your opencode conversations — browse, search, and resume sessions from ~/.local/share/opencode/opencode.db. Nothing leaves your machine.",
   "license": "MIT",
-  "author": "Daniel Farina",
+  "author": "LoveTuT (fork of Daniel Farina)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/daniel-farina/ai-session-manager.git"
+    "url": "git+https://github.com/LoveTuT/opencode-dialog-explorer.git"
   },
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=22"
   },
   "keywords": [
-    "claude-code",
-    "codex",
+    "opencode",
     "ai-coding",
     "cli",
     "conversations",

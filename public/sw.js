@@ -1,4 +1,4 @@
-/* Service worker for the "AI Session Manager" PWA.
+/* Service worker for the "opencode Dialog Explorer" PWA.
  *
  * Strategy:
  *  - Precache a minimal app shell on install.
@@ -14,8 +14,8 @@
  */
 
 const VERSION = 'v2';
-const CACHE_NAME = `ai-session-manager-${VERSION}`;
-const API_CACHE_NAME = `ai-session-manager-api-${VERSION}`;
+const CACHE_NAME = `opencode-dialog-explorer-${VERSION}`;
+const API_CACHE_NAME = `opencode-dialog-explorer-api-${VERSION}`;
 
 // App shell. Vite serves index.html at '/', so caching '/' covers the shell.
 const APP_SHELL = [

@@ -1,22 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Metrics from './Metrics.jsx';
-import MiniStats from './MiniStats.jsx';
-import Usage from './Usage.jsx';
-import Agents from './Agents.jsx';
 import { SORT_OPTIONS, sortConvos } from './sortConvos.js';
 import './sort.css';
 
 // Fallback source metadata; replaced by /api/sources on load.
 const DEFAULT_META = {
-  claude: { label: 'Claude Code', short: 'Claude', color: '#d97757' },
-  codex: { label: 'Codex', short: 'Codex', color: '#10a37f' },
-  grok: { label: 'Grok', short: 'Grok', color: '#9b87f5' },
   opencode: { label: 'opencode', short: 'opencode', color: '#f0883e' },
-  cursor: { label: 'Cursor', short: 'Cursor', color: '#4d9fff' },
-  gemini: { label: 'Gemini CLI', short: 'Gemini', color: '#e6477f' },
-  copilot: { label: 'GitHub Copilot CLI', short: 'Copilot', color: '#3fb950' },
-  goose: { label: 'Goose', short: 'Goose', color: '#e3b341' },
-  droid: { label: 'Droid', short: 'Droid', color: '#ff7b72' },
 };
 
 function relativeTime(iso) {
@@ -247,14 +235,17 @@ const ConversationCard = memo(function ConversationCard({
   );
 });
 
+// localStorage namespace for this app's own view state.
+const NS = 'ocde';
+
 // Filters persist across refreshes via localStorage.
-const FILTERS_KEY = 'ccv.filters';
+const FILTERS_KEY = `${NS}.filters`;
 function loadFilters() {
   try { return JSON.parse(localStorage.getItem(FILTERS_KEY)) || {}; } catch { return {}; }
 }
 
 // Starred conversation keys persist separately.
-const STARRED_KEY = 'ccv.starred';
+const STARRED_KEY = `${NS}.starred`;
 function loadStarred() {
   try { return JSON.parse(localStorage.getItem(STARRED_KEY)) || []; } catch { return []; }
 }
@@ -266,10 +257,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [query, setQuery] = useState(saved.query || '');
   const [project, setProject] = useState(saved.project || 'all');
-  const [source, setSource] = useState(saved.source || 'all');
   const [sort, setSort] = useState(saved.sort || 'recent');
-  const [showStats, setShowStats] = useState(saved.showStats ?? false);
-  const [showAgents, setShowAgents] = useState(saved.showAgents ?? false);
   const [starredOnly, setStarredOnly] = useState(saved.starredOnly ?? false);
   const [starred, setStarred] = useState(() => new Set(loadStarred()));
   const [expandedKey, setExpandedKey] = useState(null);
@@ -310,9 +298,9 @@ export default function App() {
   // Save filters (and view prefs) whenever they change.
   useEffect(() => {
     try {
-      localStorage.setItem(FILTERS_KEY, JSON.stringify({ query, project, source, sort, showStats, showAgents, starredOnly }));
+      localStorage.setItem(FILTERS_KEY, JSON.stringify({ query, project, sort, starredOnly }));
     } catch {}
-  }, [query, project, source, sort, showStats, showAgents, starredOnly]);
+  }, [query, project, sort, starredOnly]);
 
   // Load + refresh. Refreshes happen silently in the background (the list is
   // replaced in place); the initial load shows skeletons.
@@ -360,11 +348,10 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Drop a persisted filter that no longer matches any data (e.g. a project or
-  // tool that disappeared) so the user never lands on a confusing empty list.
+  // Drop a persisted filter that no longer matches any data (e.g. a project
+  // that disappeared) so the user never lands on a confusing empty list.
   useEffect(() => {
     if (!convos) return;
-    if (source !== 'all' && !convos.some((c) => c.source === source)) setSource('all');
     if (project !== 'all' && !convos.some((c) => c.projectLabel === project)) setProject('all');
   }, [convos]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -393,36 +380,26 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Counts per source, ordered by how many conversations each has.
-  const sourceCounts = useMemo(() => {
-    if (!convos) return [];
-    const counts = new Map();
-    for (const c of convos) counts.set(c.source, (counts.get(c.source) || 0) + 1);
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [convos]);
-
   const starredCount = useMemo(
     () => (convos ? convos.reduce((n, c) => n + (starred.has(c.key) ? 1 : 0), 0) : 0),
     [convos, starred]
   );
 
-  // Projects, scoped to the active source so the dropdown stays relevant.
+  // Projects present in the data.
   const projects = useMemo(() => {
     if (!convos) return [];
     const counts = new Map();
     for (const c of convos) {
-      if (source !== 'all' && c.source !== source) continue;
       counts.set(c.projectLabel, (counts.get(c.projectLabel) || 0) + 1);
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [convos, source]);
+  }, [convos]);
 
   const filtered = useMemo(() => {
     if (!convos) return [];
     const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return convos.filter((c) => {
       if (starredOnly && !starred.has(c.key)) return false;
-      if (source !== 'all' && c.source !== source) return false;
       if (project !== 'all' && c.projectLabel !== project) return false;
       if (!terms.length) return true;
       const sm = meta[c.source] || {};
@@ -430,7 +407,7 @@ export default function App() {
       // metadata: every term must match (AND); content: server-side match union.
       return terms.every((t) => hay.includes(t)) || contentKeys.has(c.key);
     });
-  }, [convos, query, project, source, meta, starredOnly, starred, contentKeys]);
+  }, [convos, query, project, meta, starredOnly, starred, contentKeys]);
 
   const sorted = useMemo(() => sortConvos(filtered, sort), [filtered, sort]);
 
@@ -439,7 +416,7 @@ export default function App() {
   // bottom; it resets whenever the filter/sort result changes.
   const PAGE = 80;
   const [limit, setLimit] = useState(PAGE);
-  useEffect(() => { setLimit(PAGE); }, [query, project, source, sort]);
+  useEffect(() => { setLimit(PAGE); }, [query, project, sort]);
   const sentinelRef = useRef(null);
   useEffect(() => {
     const el = sentinelRef.current;
@@ -456,7 +433,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="title-row">
-          <h1>AI Session Manager</h1>
+          <h1>opencode Dialog Explorer</h1>
           <span className="count">
             {convos ? `${filtered.length} / ${convos.length}` : '…'}
             {searching && <span className="searching"> · searching content…</span>}
@@ -471,20 +448,6 @@ export default function App() {
             >
               ⟳
             </button>
-            <button
-              className={`stats-toggle ${showAgents ? 'active' : ''}`}
-              onClick={() => setShowAgents((v) => !v)}
-              title="Show installed AI coding agents"
-            >
-              🤖 Agents
-            </button>
-            <button
-              className={`stats-toggle ${showStats ? 'active' : ''}`}
-              onClick={() => setShowStats((v) => !v)}
-              title="Toggle metrics & usage"
-            >
-              📊 Stats
-            </button>
           </div>
         </div>
 
@@ -497,26 +460,6 @@ export default function App() {
             >
               ★ Starred <span className="chip-n">{starredCount}</span>
             </button>
-            <button
-              className={`chip ${source === 'all' ? 'active' : ''}`}
-              onClick={() => { setSource('all'); setProject('all'); }}
-            >
-              All <span className="chip-n">{convos.length}</span>
-            </button>
-            {sourceCounts.map(([s, n]) => {
-              const m = meta[s] || { short: s, color: '#8b949e' };
-              return (
-                <button
-                  key={s}
-                  className={`chip ${source === s ? 'active' : ''}`}
-                  style={source === s ? { borderColor: m.color, color: m.color } : undefined}
-                  onClick={() => { setSource(s); setProject('all'); }}
-                >
-                  <span className="dot" style={{ background: m.color }} />
-                  {m.short} <span className="chip-n">{n}</span>
-                </button>
-              );
-            })}
           </div>
         )}
 
@@ -525,7 +468,7 @@ export default function App() {
             <input
               ref={searchRef}
               className="search"
-              placeholder="Search title, project, path, tool, first message…  ( / )"
+              placeholder="Search title, project, path, first message…  ( / )"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               autoFocus
@@ -557,17 +500,6 @@ export default function App() {
         </div>
       </header>
 
-      {!showStats && convos && <MiniStats convos={convos} meta={meta} />}
-
-      {showStats && convos && (
-        <section className="dashboard">
-          <Metrics convos={convos} meta={meta} />
-          <Usage />
-        </section>
-      )}
-
-      {showAgents && <Agents />}
-
       <main className="list">
         {error && (
           <div className="error pad">
@@ -589,12 +521,12 @@ export default function App() {
         {convos && filtered.length === 0 && (
           <div className="muted pad">
             No conversations match.
-            {(query || source !== 'all' || project !== 'all' || starredOnly) && (
+            {(query || project !== 'all' || starredOnly) && (
               <>
                 {' '}
                 <button
                   className="retry-btn"
-                  onClick={() => { setQuery(''); setSource('all'); setProject('all'); setStarredOnly(false); }}
+                  onClick={() => { setQuery(''); setProject('all'); setStarredOnly(false); }}
                 >
                   Clear filters
                 </button>
