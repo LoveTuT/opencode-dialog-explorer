@@ -17,7 +17,14 @@
 
 ## 开始使用
 
-需要 **Node.js 22+**（内置 `node:sqlite`）以及本机 `~/.local/share/opencode/opencode.db`。
+需要 **Node.js 22+**（内置 `node:sqlite`）和本机的 OpenCode SQLite 数据库。服务按照 OpenCode 的数据目录规则定位：
+
+| 平台 | 默认数据库路径 |
+|------|----------------|
+| Linux / macOS | `~/.local/share/opencode/opencode.db` |
+| Windows | `%USERPROFILE%\.local\share\opencode\opencode.db` |
+
+如果 `XDG_DATA_HOME` 是绝对路径，则改为读取 `$XDG_DATA_HOME/opencode/opencode.db`。读取的是 **Node 进程所在系统** 的数据库：在 WSL 中运行本应用，不会自动读取另一个 Windows OpenCode 安装的数据。
 
 ```bash
 npm install
@@ -38,7 +45,7 @@ npm run preview               # 运行带本地 API 的构建版
 
 | 数据 | 位置 | 行为 |
 |------|------|------|
-| 对话、项目与消息正文 | `~/.local/share/opencode/opencode.db` | 除会话改名外只读 |
+| 对话、项目与消息正文 | OpenCode 数据目录（见上方各平台路径） | 除会话改名外只读 |
 | 置顶、别名、标签、备注 | `data/meta.json` | 本应用的本地 sidecar，已被 Git 忽略 |
 | 会话标题 | opencode 的 `session.title` | 仅在重命名时写入，不修改 `time_updated` |
 

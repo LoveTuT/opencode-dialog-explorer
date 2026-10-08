@@ -1,9 +1,8 @@
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { opencodeDbPath } from './opencode-path.js';
 
-const file = path.join(os.homedir(), '.local/share/opencode/opencode.db');
+const file = opencodeDbPath();
 
 export function renameSession(id, title) {
   if (!/^ses_[A-Za-z0-9]+$/.test(id || '')) throw new Error('invalid session id');

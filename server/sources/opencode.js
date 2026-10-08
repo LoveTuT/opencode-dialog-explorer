@@ -1,14 +1,13 @@
-// opencode: ~/.local/share/opencode/opencode.db (SQLite).
+// opencode: $XDG_DATA_HOME/opencode/opencode.db or ~/.local/share/opencode/opencode.db (SQLite).
 //   session(id, parent_id, title, directory, time_updated)
 //   message(id, session_id, time_created, data)   data.role = user|assistant
 //   part(id, message_id, data)                    data.type = text|tool|reasoning|…
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { opencodeDbPath } from '../opencode-path.js';
 import { makeEntry, cdPrefix, toolUseLine, toolResultLine, thinkingLine, clip } from './_shared.js';
 
-const DB_PATH = path.join(os.homedir(), '.local', 'share', 'opencode', 'opencode.db');
+const DB_PATH = opencodeDbPath();
 export const source = 'opencode';
 
 let _db = null;

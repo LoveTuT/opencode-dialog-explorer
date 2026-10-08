@@ -35,7 +35,18 @@ and focused on a single source: the local opencode SQLite database.
 ## Get started
 
 Requires **Node.js 22+** (for the built-in `node:sqlite`) and an existing
-opencode database at `~/.local/share/opencode/opencode.db`.
+OpenCode SQLite database. The server resolves its location using OpenCode's
+data-directory convention:
+
+| Platform | Default database path |
+|----------|-----------------------|
+| Linux / macOS | `~/.local/share/opencode/opencode.db` |
+| Windows | `%USERPROFILE%\.local\share\opencode\opencode.db` |
+
+If `XDG_DATA_HOME` is set to an absolute path, the database is read from
+`$XDG_DATA_HOME/opencode/opencode.db` instead. The server reads the database
+belonging to the OS/environment where **Node runs**: running this app in WSL
+does not automatically read a separate Windows OpenCode installation.
 
 ```bash
 npm install
@@ -62,7 +73,7 @@ private transcripts and is not intended for network access.
 
 | Data | Location | Behavior |
 |------|----------|----------|
-| Conversations, projects, and message content | `~/.local/share/opencode/opencode.db` | Read-only except session renaming |
+| Conversations, projects, and message content | OpenCode data directory (see platform paths above) | Read-only except session renaming |
 | Pins, aliases, tags, and notes | `data/meta.json` | Local sidecar; Git-ignored |
 | Session title | opencode's `session.title` | Updated only when you rename a session; `time_updated` is preserved |
 

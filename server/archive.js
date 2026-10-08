@@ -1,11 +1,11 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readMeta } from './meta.js';
+import { opencodeDbPath } from './opencode-path.js';
 import { cdPrefix } from './sources/_shared.js';
 
-const file = path.join(os.homedir(), '.local/share/opencode/opencode.db');
+const file = opencodeDbPath();
 const sessionId = /^ses_[A-Za-z0-9]+$/;
 let connection;
 
