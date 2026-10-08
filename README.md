@@ -70,7 +70,7 @@ npm run service:status
 npm run service:stop
 ```
 
-Start builds the app and launches the preview in the background at `http://127.0.0.1:4570`. Local state and logs are in the Git-ignored `data/service.json` and `data/service.log`. Repeated starts reuse the service; stop only terminates a verified instance started by this entry point, not `agent:dev` or an unrelated process on port 4570. To serve new code, stop and start again. WSL uses the Linux launcher and reads the WSL OpenCode database; use the Windows launcher for native Windows data. Do not share one `node_modules` between Windows and WSL: packages such as Rollup install platform-specific binaries, so use a separate project copy and install dependencies in each OS.
+Start builds the app and launches the preview in the background at `http://127.0.0.1:4570`. Local state and logs are in the Git-ignored `data/service.json` and `data/service.log`. Double-clicking Windows `start.cmd` rebuilds and replaces a running instance managed by this script, then opens the homepage once in the Windows default browser; it will not replace another process occupying port 4570. Repeated `service:start` calls reuse the service. Stop only terminates a verified instance started by this entry point, not `agent:dev` or an unrelated process on port 4570. To serve new code outside the Windows double-click launcher, stop and start again. WSL uses the Linux launcher and reads the WSL OpenCode database; use the Windows launcher for native Windows data. Do not share one `node_modules` between Windows and WSL: packages such as Rollup install platform-specific binaries, so use a separate project copy and install dependencies in each OS.
 
 ```bash
 npm test                       # smoke and archive checks
@@ -118,8 +118,10 @@ Passing the project directory directly avoids Windows drive-switching issues wit
   handles the optional write to opencode's session title.
 - `vite.config.js` exposes these local APIs in both dev and preview mode; the
   legacy conversation/search endpoints remain available for compatibility.
-- The installable PWA uses a network-first service worker; API requests always
-  go to the local server rather than an offline cache.
+- The installable PWA caches static assets with a network-first service worker;
+  navigations and API requests require the local server, so a stopped service
+  cannot replay old conversations from offline cache. Refresh an existing tab
+  to check whether the server is still available.
 
 For background and design decisions, see the [UI redesign notes](./docs/UI-REDESIGN.md)
 and [earlier implementation plan](./docs/IMPLEMENTATION.md).

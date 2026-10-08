@@ -43,7 +43,7 @@ npm run service:status
 npm run service:stop
 ```
 
-启动入口自动构建并在后台运行预览版，地址为 `http://127.0.0.1:4570`；状态及日志存于已忽略的 `data/service.json`、`data/service.log`。重复启动不会创建第二个服务；停止只针对由此入口启动的服务，不影响 `agent:dev` 或其他占用 4570 端口的程序。修改代码后重新执行停止、启动以更新构建版。WSL 中使用 Linux 入口，读取 WSL 的 OpenCode 数据；要读取 Windows 原生数据请在 Windows 侧启动。**不要在 Windows 和 WSL 共用同一个 `node_modules`**：Rollup 等包有平台专用的原生依赖，应在各自的项目副本中分别安装。
+启动入口自动构建并在后台运行预览版，地址为 `http://127.0.0.1:4570`；状态及日志存于已忽略的 `data/service.json`、`data/service.log`。Windows 双击 `start.cmd` 时，若本脚本管理的服务已运行，会先构建再重启覆盖，成功后始终用 Windows 默认浏览器打开主页；端口被其他进程占用时不会误停或覆盖。通用 `service:start` 重复执行仍复用已运行的服务。停止只针对由此入口启动的服务，不影响 `agent:dev` 或其他占用 4570 端口的程序。修改代码后重新执行停止、启动以更新构建版。WSL 中使用 Linux 入口，读取 WSL 的 OpenCode 数据；要读取 Windows 原生数据请在 Windows 侧启动。**不要在 Windows 和 WSL 共用同一个 `node_modules`**：Rollup 等包有平台专用的原生依赖，应在各自的项目副本中分别安装。
 
 ```bash
 npm test                       # 冒烟与档案测试
@@ -76,7 +76,7 @@ opencode '<会话工作目录>' --session <会话 ID>
 - `server/archive.js` 读取项目和会话索引、分页返回消息、生成用户提问目录并检索历史文本。宽泛的正文搜索可能较慢；搜索结果每个会话最多展示一处命中，界面最多展示 100 个会话。
 - `server/meta.js` 将本应用的整理信息写入 `data/meta.json`；`server/rename.js` 负责可选的 opencode 会话标题写入。
 - `vite.config.js` 在开发和预览模式中挂载本地 API；旧版会话与搜索接口仍保留兼容。
-- 可安装 PWA 的 Service Worker 采用 network-first；API 请求始终访问本机服务，不使用离线缓存。
+- 可安装 PWA 的 Service Worker 仅对静态资源采用 network-first 缓存；页面导航与 API 必须访问本机服务，服务关闭后不能从离线缓存重现旧对话。已打开的标签页需刷新才能确认服务状态。
 
 背景与设计决策参见 [UI 重构方案](./docs/UI-REDESIGN.md) 和 [早期实施规划](./docs/IMPLEMENTATION.md)。
 

@@ -77,20 +77,41 @@ async function run() {
   });
 }
 
-async function start() {
+async function stopOwned(saved) {
+  const response = await fetch(`${url}/api/service/stop`, {
+    method: 'POST', headers: { 'X-Service-Token': saved.token }, signal: AbortSignal.timeout(1500),
+  });
+  if (response.status !== 204) throw new Error('后台服务拒绝停止请求，未结束任何进程');
+  for (let i = 0; i < 50; i++) {
+    if (!await identity(saved.token) && !await portOpen()) {
+      unlinkSync(stateFile);
+      console.log('服务已停止');
+      return;
+    }
+    await pause(100);
+  }
+  throw new Error('服务尚未停止，请检查后台进程；未清除运行记录');
+}
+
+async function start(restart = false) {
   return withLock(async () => {
     const saved = state();
-    if (saved && await identity(saved.token)) {
+    const running = saved && await identity(saved.token);
+    if (running && !restart) {
       console.log(`服务已在运行：${url} (PID ${saved.pid})`);
       return;
     }
-    if (await portOpen()) throw new Error('端口 4570 已被其他服务占用；不会覆盖或停止它');
+    if (!running && await portOpen()) throw new Error('端口 4570 已被其他服务占用；不会覆盖或停止它');
     if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('需要 Node.js 22 或更新版本');
     const vite = join(root, 'node_modules', 'vite', 'bin', 'vite.js');
     if (!existsSync(vite)) throw new Error('缺少依赖，请先在项目目录执行 npm install');
     console.log('正在构建预览版本…');
     const build = spawnSync(process.execPath, [vite, 'build'], { cwd: root, stdio: 'inherit' });
     if (build.error || build.status !== 0) throw new Error(`构建失败${build.error ? `：${build.error.message}` : ''}`);
+    if (running) {
+      console.log('正在重启已由本脚本启动的服务…');
+      await stopOwned(saved);
+    }
     if (await portOpen()) throw new Error('构建期间端口 4570 被占用；未启动服务');
     const token = randomUUID();
     const output = openSync(logFile, 'a');
@@ -123,19 +144,7 @@ async function stop() {
       console.log('服务未运行');
       return;
     }
-    const response = await fetch(`${url}/api/service/stop`, {
-      method: 'POST', headers: { 'X-Service-Token': saved.token }, signal: AbortSignal.timeout(1500),
-    });
-    if (response.status !== 204) throw new Error('后台服务拒绝停止请求，未结束任何进程');
-    for (let i = 0; i < 50; i++) {
-      if (!await identity(saved.token)) {
-        unlinkSync(stateFile);
-        console.log('服务已停止');
-        return;
-      }
-      await pause(100);
-    }
-    throw new Error('服务尚未停止，请检查后台进程；未清除运行记录');
+    await stopOwned(saved);
   });
 }
 
@@ -149,9 +158,10 @@ async function status() {
 try {
   if (command === 'run') await run();
   else if (command === 'start') await start();
+  else if (command === 'restart') await start(true);
   else if (command === 'stop') await stop();
   else if (command === 'status') await status();
-  else throw new Error('用法：node service/service.mjs start|stop|status');
+  else throw new Error('用法：node service/service.mjs start|restart|stop|status');
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
