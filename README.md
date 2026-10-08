@@ -1,5 +1,7 @@
 # opencode Dialog Explorer
 
+English | [中文](./README.zh-CN.md)
+
 A small Vite + React app that lists your local **opencode** conversations
 (`~/.local/share/opencode/opencode.db`), lets you search/filter them, preview
 their messages, and copy a ready-to-run command to resume any session.
