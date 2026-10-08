@@ -2,97 +2,98 @@
 
 English | [中文](./README.zh-CN.md)
 
-A small Vite + React app that lists your local **opencode** conversations
-(`~/.local/share/opencode/opencode.db`), lets you search/filter them, preview
-their messages, and copy a ready-to-run command to resume any session.
+A local, project-first archive for **opencode** conversations. Find the project
+you worked on, revisit a session, jump to an earlier question, or search across
+your entire history. When you want to continue working, copy the resume command
+and run it in opencode. This is a reader, not a chat client.
 
-This is a fork of [daniel-farina/ai-session-manager](https://github.com/daniel-farina/ai-session-manager)
-(`ai-session-manager`) reduced to a single source — opencode — as the basis for
-a richer dialog browser. See `IMPLEMENTATION.md` for the planned enhancements.
+Built with Vite + React. Forked from
+[daniel-farina/ai-session-manager](https://github.com/daniel-farina/ai-session-manager)
+and focused on a single source: the local opencode SQLite database.
 
-## Data source
+## What you can do
 
-| Tool | Storage read | Resume command |
-|------|--------------|----------------|
-| **opencode** | `~/.local/share/opencode/opencode.db` (SQLite) | `opencode --session <id>` |
+- **Browse by project.** Projects are grouped by opencode `project_id`, not just
+  folder name. Filter projects by name or path; filter and sort sessions within
+  a project, including by working directory when a project has several.
+- **Read the full history.** Load older messages in pages. Markdown is rendered
+  for reading; tool calls and reasoning remain available in collapsible sections.
+  Enable **Q&A only** to hide tool calls and reasoning while reading.
+- **Jump between questions.** A compact, scrollable question rail previews each
+  user question, follows your reading position, and loads earlier history when
+  you jump to a question that is not on the current page.
+- **Search across projects.** Find sessions by title, project name, path, tags,
+  notes, or historical text. A text match can take you directly to its message.
+  Press `Ctrl+K` / `⌘K` or `/` to focus search.
+- **Organize your archive.** Pin projects and sessions; add project aliases and
+  notes, or session tags and notes. Rename a session when you want its title to
+  change in opencode itself.
+- **Return to your work.** Copy the resume command or session ID, or try to open
+  the project folder in your OS file manager. The layout adapts to narrow screens
+  and can be installed as a PWA.
 
-Only top-level sessions (`parent_id IS NULL`) with at least one message are
-listed. If the database is missing, the list is empty.
+## Get started
 
-## Privacy & security
-
-- **Everything stays local.** The app reads the SQLite database opencode already
-  wrote to your home directory and serves it to your own browser. No telemetry,
-  no network calls, nothing bundled or uploaded.
-- The server binds to **localhost only** (enforced in `vite.config.js`). Don't
-  run it with `--host` — the API would serve your private conversation history
-  to anyone who can reach the port.
-- The database is opened **read-only**. Session refs are pattern-checked
-  (`ses_…`) so the API can only read a valid session id. `/api/open` validates
-  paths and spawns the OS opener via `execFile` with an args array, never a
-  shell.
-
-## Platform support
-
-- **macOS** — folder-open uses `open`.
-- **Linux** — folder-open uses `xdg-open`.
-- **Windows** — folder-open uses `explorer`.
-- **WSL** — `xdg-open` is usually absent, so folder-open converts the path with
-  `wslpath -w` and hands it to `explorer.exe` (a `\\wsl.localhost\<distro>\…`
-  UNC path), opening the folder in Windows Explorer.
-
-## Run
+Requires **Node.js 22+** (for the built-in `node:sqlite`) and an existing
+opencode database at `~/.local/share/opencode/opencode.db`.
 
 ```bash
 npm install
-npm run dev      # opens http://localhost:4570
-npm test         # smoke-test the adapter + endpoints against your local data
-npm run build && npm run preview   # serve the production build (API included)
+npm run dev
 ```
 
-The API runs as a Vite middleware on **both** the dev server and the preview
-server, so the built `dist/` works end-to-end via `npm run preview` (it still
-reads your local database — nothing is bundled or sent anywhere).
+Open `http://localhost:4570`. If the database does not exist or has no nonempty
+top-level sessions, the archive is empty. Only sessions with `parent_id IS NULL`
+and at least one message appear in the index. An `ExperimentalWarning` from
+`node:sqlite` on Node 22 is expected.
 
-Requires Node 22+ with the built-in `node:sqlite` (`ExperimentalWarning` is
-expected on Node 22).
+```bash
+npm test                       # smoke and archive checks
+npm run build
+npm run preview               # serve the built app with its local API
+```
 
-`npm test` (`scripts/smoke-test.mjs`) lists conversations, fetches a detail,
-and validates the data contract (unique keys, no missing fields / future
-timestamps, valid message roles, newest-first ordering), plus ref-traversal
-rejection and the open-path module. Exits non-zero on any failure. On a machine
-with no opencode data yet, the data-dependent checks are skipped.
+The API is Vite middleware in both development and preview mode. The built
+frontend does not contain your conversations; preview still reads the database
+on the machine running the server. Keep the server on localhost: it serves
+private transcripts and is not intended for network access.
+
+## Where data goes
+
+| Data | Location | Behavior |
+|------|----------|----------|
+| Conversations, projects, and message content | `~/.local/share/opencode/opencode.db` | Read-only except session renaming |
+| Pins, aliases, tags, and notes | `data/meta.json` | Local sidecar; Git-ignored |
+| Session title | opencode's `session.title` | Updated only when you rename a session; `time_updated` is preserved |
+
+The app has no telemetry or external CDN; the UI requests data from its local
+server. Session IDs and folder paths are validated before use. Folder opening
+uses the OS opener without a shell (`open` on macOS, `xdg-open` on Linux,
+`explorer` on Windows, and `explorer.exe` with a WSL path on WSL). An “open
+folder” response means the command was attempted, not that the file manager
+necessarily displayed the folder.
+
+To resume a session, use the copied command in your terminal:
+
+```bash
+cd "<session working directory>" && opencode --session <session-id>
+```
 
 ## How it works
 
-- A tiny dev-server API (in `vite.config.js`) delegates to the opencode **source
-  adapter** in `server/sources/opencode.js`, which exports `{ source, list,
-  detail }` and returns a normalised record via `makeEntry` (`_shared.js`).
-- `GET /api/conversations` returns one entry per top-level session (title,
-  project, branch, message count, last activity, ready-to-run resume command),
-  sorted most-recent first.
-- `GET /api/conversation?source=…&ref=…` returns the last 30 messages for one
-  session.
-- `GET /api/search?q=…` full-content search over cached transcripts.
-- `GET /api/open?path=…` opens a project folder in the OS file manager.
-- `GET /api/sources` returns display metadata (label + accent colour).
+- `server/archive.js` reads the project/session index, pages through messages,
+  builds the user-question directory, and searches historical text. Broad
+  content searches may take longer. Search results show at most one match per
+  session and up to 100 sessions in the UI.
+- `server/meta.js` writes app-only metadata to `data/meta.json`; `server/rename.js`
+  handles the optional write to opencode's session title.
+- `vite.config.js` exposes these local APIs in both dev and preview mode; the
+  legacy conversation/search endpoints remain available for compatibility.
+- The installable PWA uses a network-first service worker; API requests always
+  go to the local server rather than an offline cache.
 
-## Features
-
-- **Search** across title, project, path, session id, and first message (plus
-  full-content search).
-- **Filter** by project (dropdown) and starred-only.
-- **Sort** by most recent / oldest / most messages / title.
-- **Filters persist** across refresh (`ocde.filters` in `localStorage`).
-- **Expand** any card to read the last 30 messages, color-coded, with tool calls
-  and results inlined.
-- **Copy resume command** — the exact `cd "<cwd>" && opencode --session <id>`.
-- **Open** — opens the conversation's project folder in the OS file manager.
-- **Star** — pin the conversations you care about (stored in `localStorage`).
-- **PWA** — installable (`public/manifest.webmanifest`, `public/sw.js`, icons;
-  registered via `src/pwa.js`). The service worker is network-first so it never
-  serves stale content and doesn't interfere with dev/HMR; `/api/*` is always
-  network.
+For background and design decisions, see the [UI redesign notes](./docs/UI-REDESIGN.md)
+and [earlier implementation plan](./docs/IMPLEMENTATION.md).
 
 ## License
 

@@ -1,4 +1,6 @@
-# opencode Dialog Explorer — 实施文档（改造 / 重构 / 补充逻辑）
+# opencode Dialog Explorer — 早期实施文档（历史规划）
+
+> 本文档记录 P0 时的早期方案；P0 已完成，文中的基线盘点和待确认项可能过时。后续项目优先 UI/交互重构请以 [UI 重构方案](./UI-REDESIGN.md) 为准；两者冲突时以新方案为准。
 
 > 本文档只描述**要做什么、改哪些文件、怎么改**，不含具体实现代码。具体改动待确认后再执行。
 
@@ -7,7 +9,7 @@
 - 项目：`daniel-farina/ai-session-manager`（MIT）
 - 上游：https://github.com/daniel-farina/ai-session-manager
 - 基线提交：`dfdbf0f36d3b3e83dd08b7f423cb62c37a010992`（2026-06-10，main）
-- 本地路径：`/home/wanghj/projects/projects-self/opencode-dialog-explorer`
+- 本地路径：仓库根目录（因机器而异）
 - 已 `git init`（分支 `main`），并添加 `upstream` 远程指向原仓库，便于后续同步上游修复。
 - 运行环境：本机 Node **v22.22**（基线声明 `node>=24`，但 `node:sqlite` 在 22 可用，仅实验性告警）；sqlite3 CLI 3.50。
 - 运行位置：**WSL**，浏览器经 `http://localhost:<port>` 访问（避免 `\\wsl$` 路径问题）。

@@ -1,9 +1,42 @@
 node_modules/
 dist/
+data/
 *.log
 .DS_Store
 
+# Machine-local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+*.local.*
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db3
+*.db3-*
+credentials.json
+secrets.json
+service-account*.json
+*-credentials.json
+*-secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.npmrc
+
 # Local agent/editor state
 .claude/
+.opencode/
+.agents/
 .vscode/
 .idea/
