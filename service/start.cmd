@@ -9,7 +9,8 @@ if errorlevel 1 (
 node "%CD%\service\service.mjs" restart
 if errorlevel 1 (
   echo.
-  echo 启动失败，请检查上方信息。
+  echo 启动失败。上方已列出占用端口 4570 的进程或构建错误。
+  echo 详细日志：%CD%\data\service.log
   popd
   echo.
   pause
