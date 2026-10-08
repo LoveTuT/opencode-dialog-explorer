@@ -60,6 +60,18 @@ top-level sessions, the archive is empty. Only sessions with `parent_id IS NULL`
 and at least one message appear in the index. An `ExperimentalWarning` from
 `node:sqlite` on Node 22 is expected.
 
+### Background service (built preview)
+
+Run `npm install` once on the OS where you intend to run the server (Node.js 22+). On Windows, double-click `service/start.cmd` and `service/stop.cmd`; their windows stay open to show the result. On macOS, Linux, or WSL, run `sh service/start.sh` and `sh service/stop.sh` in a terminal. The same commands work everywhere through npm:
+
+```text
+npm run service:start
+npm run service:status
+npm run service:stop
+```
+
+Start builds the app and launches the preview in the background at `http://127.0.0.1:4570`. Local state and logs are in the Git-ignored `data/service.json` and `data/service.log`. Repeated starts reuse the service; stop only terminates a verified instance started by this entry point, not `agent:dev` or an unrelated process on port 4570. To serve new code, stop and start again. WSL uses the Linux launcher and reads the WSL OpenCode database; use the Windows launcher for native Windows data. Do not share one `node_modules` between Windows and WSL: packages such as Rollup install platform-specific binaries, so use a separate project copy and install dependencies in each OS.
+
 ```bash
 npm test                       # smoke and archive checks
 npm run build

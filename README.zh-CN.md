@@ -33,6 +33,18 @@ npm run dev
 
 打开 `http://localhost:4570`。数据库不存在或没有非空顶层会话时，档案列表为空；索引仅展示 `parent_id IS NULL` 且至少有一条消息的会话。Node 22 下 `node:sqlite` 的 `ExperimentalWarning` 属正常现象。
 
+### 后台开关（构建版）
+
+先在**准备运行服务的系统**执行一次 `npm install`（Node.js 22+）。Windows 可直接双击 `service/start.cmd` 启动、`service/stop.cmd` 停止，窗口会保留运行结果；macOS / Linux / WSL 在终端运行 `sh service/start.sh` 和 `sh service/stop.sh`。也可在所有平台使用：
+
+```text
+npm run service:start
+npm run service:status
+npm run service:stop
+```
+
+启动入口自动构建并在后台运行预览版，地址为 `http://127.0.0.1:4570`；状态及日志存于已忽略的 `data/service.json`、`data/service.log`。重复启动不会创建第二个服务；停止只针对由此入口启动的服务，不影响 `agent:dev` 或其他占用 4570 端口的程序。修改代码后重新执行停止、启动以更新构建版。WSL 中使用 Linux 入口，读取 WSL 的 OpenCode 数据；要读取 Windows 原生数据请在 Windows 侧启动。**不要在 Windows 和 WSL 共用同一个 `node_modules`**：Rollup 等包有平台专用的原生依赖，应在各自的项目副本中分别安装。
+
 ```bash
 npm test                       # 冒烟与档案测试
 npm run build
