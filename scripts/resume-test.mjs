@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resumeCommand } from '../server/sources/_shared.js';
+import { resumeCommand } from '../server/archive.js';
 
 const id = 'ses_abc123';
 assert.equal(resumeCommand('', id, 'darwin'), `opencode --session ${id}`);

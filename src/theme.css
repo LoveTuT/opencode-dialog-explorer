@@ -481,6 +481,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .global-search-wrap kbd { color: #656565; background: #f7f7f7; padding: 4px 6px; border: 1px solid #e9e9e9; border-radius: 3px; }
 .search-status, .results-heading { color: #626262; }
 .search-progress { display: flex; align-items: center; gap: 10px; color: #624919; font-size: 12px; margin: 26px 0 12px; min-height: 24px; }
+.search-scope { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; }
+.search-scope button { background: #ffffff; border: 1px solid var(--stroke); color: #525252; border-radius: 999px; padding: 5px 12px; font-size: 12px; }
+.search-scope button:hover { border-color: #9cacc0; color: #242424; }
+.search-scope button.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.search-scope button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .search-spinner { width: 15px; height: 15px; border: 2px solid #e8d9b3; border-top-color: #a47a28; border-radius: 50%; }
 .search-match { color: #382503; background: #ffe7a3; border-radius: 2px; padding: 0 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .result-list button { color: #252525; border-color: var(--stroke); padding: 23px 12px; }
@@ -575,3 +580,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .question-key, .question-key-preview { transition: none; animation: none; }
   .rail, .rail .brand, .rail .brand-name, .rail .brand-mark, .rail .nav-group-label, .rail .project-nav, .rail .rail-footer, .rail .nav-text, .rail .nav-count { transition: none; }
 }
+
+/* In-session find */
+.session-property-actions .find-toggle.is-on { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.find-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 10px; background: #ffffff; border: 1px solid var(--stroke); border-radius: 6px; }
+.find-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #405c7a18; }
+.find-input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--text); font-size: 13px; }
+.find-count { color: #686868; font-size: 12px; white-space: nowrap; }
+.find-bar button { border: 1px solid var(--stroke); background: #ffffff; color: var(--soft); border-radius: 5px; padding: 3px 9px; font-size: 12px; }
+.find-bar button:hover:not(:disabled) { border-color: #9cacc0; color: var(--text); }
+.find-bar button:disabled { opacity: .45; cursor: default; }
+.find-bar .find-close { border-color: transparent; }
+.transcript mark.find-hit { background: #ffe7a3; color: #382503; border-radius: 2px; padding: 0 1px; }
+.transcript .message.is-find-active mark.find-hit { background: #ffb04d; color: #2b1a00; }
+
+/* Session list first-question preview + server-side pagination */
+.session-target .session-preview { color: #6f6f6f; font-size: 11px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-more { display: block; width: 100%; margin: 10px 0 0; padding: 8px; background: #ffffff; border: 1px solid var(--stroke); border-radius: 6px; color: var(--soft); font-size: 12px; cursor: pointer; }
+.session-more:hover:not(:disabled) { border-color: #9cacc0; color: var(--text); }
+.session-more:disabled { opacity: .6; cursor: default; }
+.session-empty { color: #686868; font-size: 12px; padding: 16px 4px; }

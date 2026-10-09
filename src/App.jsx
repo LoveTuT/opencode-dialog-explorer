@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeFindHighlight from './rehypeFindHighlight.js';
 
 const endpoint = (path) => '/api/archive/' + path;
 async function request(path, options) {
@@ -19,6 +20,8 @@ const age = (date) => {
   return new Date(date).toLocaleDateString('zh-CN');
 };
 const short = (text, max = 100) => text?.length > max ? `${text.slice(0, max)}…` : text || '';
+const matchLabel = { title: '标题', project: '项目', path: '路径', tags: '标签', note: '备注', id: '会话 ID', content: '正文' };
+const SCOPES = [['all', '全部'], ['metadata', '标题与路径'], ['content', '正文']];
 function Highlight({ text, query }) {
   const value = String(text || '');
   const terms = [...new Set(query.trim().split(/\s+/).filter(Boolean))].sort((a, b) => b.length - a.length);
@@ -50,11 +53,11 @@ function Icon({ name }) {
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{shapes[name]}</svg>;
 }
 
-function Part({ part }) {
+function Part({ part, findTerm }) {
   if (part.type === 'tool') return <details className="process"><summary>工具 · {part.name}</summary><pre>{JSON.stringify(part.input ?? {}, null, 2)}</pre>{part.output && <pre>{String(part.output)}</pre>}</details>;
   if (part.type === 'reasoning') return <details className="process"><summary>思考过程</summary><pre>{part.text}</pre></details>;
   if (part.type === 'file') return <div className="attachment">附件记录 · {part.text}</div>;
-  return <div className="message-text"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{ a: ({ children, href }) => <a href={/^https?:\/\//.test(href || '') ? href : undefined} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span className="attachment">图片记录 · {alt || '未命名'}</span>, code: ({ children, className }) => <code className={className}>{children}</code> }}>{part.text}</ReactMarkdown></div>;
+  return <div className="message-text"><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={findTerm ? [[rehypeFindHighlight, findTerm]] : []} skipHtml components={{ a: ({ children, href }) => <a href={/^https?:\/\//.test(href || '') ? href : undefined} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span className="attachment">图片记录 · {alt || '未命名'}</span>, code: ({ children, className }) => <code className={className}>{children}</code> }}>{part.text}</ReactMarkdown></div>;
 }
 
 function CopyButton({ value, label, onNotify, className }) {
@@ -181,6 +184,11 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
   const [busy, setBusy] = useState(false);
   const [tocOpen, setTocOpen] = useState(true);
   const [activeQuestion, setActiveQuestion] = useState(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [findHits, setFindHits] = useState([]);
+  const [findIndex, setFindIndex] = useState(0);
+  const [findBusy, setFindBusy] = useState(false);
   const scroller = useRef(null);
   const pendingAnchor = useRef(null);
   const pendingTop = useRef(false);
@@ -198,6 +206,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
     jumpHandled.current = null;
     setBusy(false);
     setDetail(null); setError(''); setToc([]); setActiveQuestion(null);
+    setFindOpen(false); setFindQuery(''); setFindHits([]); setFindIndex(0); setFindBusy(false);
     Promise.all([request(`sessions/${encodeURIComponent(id)}`), request(`sessions/${encodeURIComponent(id)}/toc`)]).then(([d, t]) => {
       if (live) { setDetail(d); setToc(t); }
     }).catch((e) => { if (live) setError(e.message); });
@@ -263,6 +272,22 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
     jumpHandled.current = jump;
     locate(jump);
   }, [id, !!detail, jump]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const term = findQuery.trim();
+    if (!findOpen || !term) { setFindHits([]); setFindIndex(0); setFindBusy(false); return; }
+    let live = true;
+    setFindBusy(true);
+    const timeout = setTimeout(() => request(`sessions/${encodeURIComponent(id)}/find?q=${encodeURIComponent(term)}`)
+      .then((hits) => { if (live) { setFindHits(hits); setFindIndex(0); } })
+      .catch((e) => { if (live) setError(e.message); })
+      .finally(() => { if (live) setFindBusy(false); }), 250);
+    return () => { live = false; clearTimeout(timeout); };
+  }, [id, findOpen, findQuery]);
+  useEffect(() => {
+    if (findOpen && findHits.length) locate(findHits[findIndex]?.messageId);
+  }, [findHits, findIndex, findOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stepFind = (delta) => { if (findHits.length) setFindIndex((i) => (i + delta + findHits.length) % findHits.length); };
+  const closeFind = () => { setFindOpen(false); setFindQuery(''); setFindHits([]); setFindIndex(0); };
 
   const older = async () => {
     if (!detail?.nextCursor || busy) return;
@@ -280,6 +305,9 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
   };
   if (error && !detail) return <div className="reader-empty">读取失败：{error}<button onClick={onBack}>返回</button></div>;
   if (!detail) return <div className="reader-empty">正在载入会话…</div>;
+  const activeFindMessageId = findOpen && findHits.length ? findHits[findIndex]?.messageId : null;
+  const activeFindTerm = findOpen ? findQuery.trim() : '';
+  const questionsFilter = questionsOnly && !findOpen;
   return <div className="selected-reader">
     <div className="session-properties">
       <div className="eyebrow">{session ? '会话管理' : '会话工具'}</div>
@@ -290,11 +318,19 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
       </div>}
       <div className="session-property-actions">
         <ActionHint text="隐藏思考、工具调用和中间回复，每次提问只显示最后一条有正文的回答"><button type="button" className={`qa-toggle${questionsOnly ? ' is-on' : ''}`} role="switch" aria-checked={questionsOnly} onClick={() => onQuestionsOnlyChange(!questionsOnly)}><span className="qa-toggle-track" aria-hidden="true" />仅问答</button></ActionHint>
+        <ActionHint text="在当前会话的全部消息中查找关键词，支持上/下一处跳转"><button type="button" className={`find-toggle${findOpen ? ' is-on' : ''}`} aria-expanded={findOpen} onClick={() => (findOpen ? closeFind() : setFindOpen(true))}>查找</button></ActionHint>
         <ActionHint text={detail.resumeShell ? `复制命令，在 ${detail.resumeShell} 中继续这段会话` : '复制命令，在终端继续这段会话'}><CopyButton value={detail.resume} label="复制恢复命令" onNotify={onNotify} /></ActionHint>
         <ActionHint text={tocOpen ? '收起右侧提问目录，专注阅读会话' : '打开右侧提问目录，快速定位历史提问'}><button onClick={() => setTocOpen((v) => !v)} aria-expanded={tocOpen}>{tocOpen ? '收起' : '打开'}提问目录</button></ActionHint>
         {session && <ActionHint text="复制当前会话的 Session ID"><CopyButton className="id-copy" value={session.id} label="复制 Session ID ↗" onNotify={onNotify} /></ActionHint>}
       </div>
     </div>
+    {findOpen && <div className="find-bar" role="search">
+      <input autoFocus className="find-input" aria-label="在当前会话中查找" placeholder="在当前会话中查找…" value={findQuery} onChange={(e) => setFindQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); } else if (e.key === 'Escape') closeFind(); }} />
+      <span className="find-count" aria-live="polite">{findBusy ? '检索中…' : findQuery.trim() ? (findHits.length ? `${findIndex + 1} / ${findHits.length}` : '无匹配') : ''}</span>
+      <button type="button" onClick={() => stepFind(-1)} disabled={!findHits.length} aria-label="上一处">▲</button>
+      <button type="button" onClick={() => stepFind(1)} disabled={!findHits.length} aria-label="下一处">▼</button>
+      <button type="button" className="find-close" onClick={closeFind} aria-label="关闭查找">✕</button>
+    </div>}
     <div className="reading-layout">
     <article className="reader" ref={scroller}>
       <header className="reader-head">
@@ -307,11 +343,11 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
       {detail.jumped && <button className="older" onClick={async () => { const version = ++requestVersion.current; pendingAnchor.current = null; prependAnchor.current = null; setBusy(true); try { const page = await request(`sessions/${encodeURIComponent(id)}`); if (version !== requestVersion.current || id !== currentId.current) return; pendingTop.current = true; setDetail(page); } catch (e) { if (version === requestVersion.current && id === currentId.current) setError(e.message); } finally { if (version === requestVersion.current && id === currentId.current) setBusy(false); } }} disabled={busy}>回到最新消息</button>}
       {detail.hasMore && <button className="older" onClick={older} disabled={busy}>{busy ? '加载中…' : '↑ 加载更早的消息'}</button>}
       <div className="transcript">{detail.messages.map((msg) => {
-        const parts = questionsOnly ? msg.parts.filter((part) => part.type !== 'tool' && part.type !== 'reasoning') : msg.parts;
-        if (questionsOnly && msg.role !== 'user' && !msg.finalAnswer) return null;
-        return <section className={`message ${msg.role}`} id={`message-${msg.id}`} key={msg.id}>
+        const parts = questionsFilter ? msg.parts.filter((part) => part.type !== 'tool' && part.type !== 'reasoning') : msg.parts;
+        if (questionsFilter && msg.role !== 'user' && !msg.finalAnswer) return null;
+        return <section className={`message ${msg.role}${msg.id === activeFindMessageId ? ' is-find-active' : ''}`} id={`message-${msg.id}`} key={msg.id}>
         <div className="message-label">{msg.role === 'user' ? '你' : 'opencode'} <time>{new Date(msg.createdAt).toLocaleString('zh-CN')}</time></div>
-        <div className="message-body">{parts.length ? parts.map((part, index) => <Part key={index} part={part} />) : <span className="muted">无可显示内容</span>}</div>
+        <div className="message-body">{parts.length ? parts.map((part, index) => <Part key={index} part={part} findTerm={activeFindTerm} />) : <span className="muted">无可显示内容</span>}</div>
       </section>})}</div>
       <div className="endnote">{detail.jumped ? '已定位到历史消息 · 可返回最新消息' : '会话内容已显示至最新'} · 只读档案</div>
     </article>
@@ -342,6 +378,7 @@ export default function App() {
   const [railCollapsed, setRailCollapsed] = useState(() => localStorage.getItem('ocde.railCollapsed') === 'true');
   const [questionsOnly, setQuestionsOnly] = useState(() => localStorage.getItem('ocde.questionsOnly') === 'true');
   const [toast, setToast] = useState(null);
+  const [projectPage, setProjectPage] = useState({ id: '', items: [], total: 0, cursor: 0, hasMore: false, loading: false });
   const toastTimer = useRef(null);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
   const notify = (message, failed = false) => {
@@ -372,15 +409,43 @@ export default function App() {
   const selectedId = section === 'projects' && parts[2] === 'sessions' ? parts[3] : section === 'all' && parts[1] === 'sessions' ? parts[2] : '';
   const jump = new URLSearchParams(url.split('?')[1] || '').get('message');
   const q = new URLSearchParams(url.split('?')[1] || '').get('q') || '';
+  const scope = new URLSearchParams(url.split('?')[1] || '').get('scope') || 'all';
   const [query, setQuery] = useState(q);
   useEffect(() => { setQuery(q); }, [q]);
+  const allHref = (nextQ, nextScope) => {
+    const params = new URLSearchParams();
+    if (nextQ) params.set('q', nextQ);
+    if (nextScope && nextScope !== 'all') params.set('scope', nextScope);
+    const search = params.toString();
+    return '/all' + (search ? `?${search}` : '');
+  };
+  const changeScope = (next) => { history.replaceState(null, '', allHref(q, next)); setUrl(current()); };
   useEffect(() => {
     if (section !== 'all' || selectedId || !q.trim()) { setResults(null); setSearching(false); return; }
     let live = true;
     setSearching(true);
-    const timeout = setTimeout(() => request(`search?q=${encodeURIComponent(q)}`).then((r) => { if (live) setResults({ ...r, query: q }); }).catch((e) => { if (live) setError(e.message); }).finally(() => { if (live) setSearching(false); }), 250);
+    const timeout = setTimeout(() => request(`search?q=${encodeURIComponent(q)}&scope=${encodeURIComponent(scope)}`).then((r) => { if (live) setResults({ ...r, query: q, scope }); }).catch((e) => { if (live) setError(e.message); }).finally(() => { if (live) setSearching(false); }), 250);
     return () => { live = false; clearTimeout(timeout); };
-  }, [section, selectedId, q]);
+  }, [section, selectedId, q, scope]);
+  useEffect(() => {
+    if (!projectId) { setProjectPage({ id: '', items: [], total: 0, cursor: 0, hasMore: false, loading: false }); return; }
+    let live = true;
+    setProjectPage({ id: projectId, items: [], total: 0, cursor: 0, hasMore: false, loading: true });
+    const params = new URLSearchParams({ limit: '30', sort, directory: directoryFilter, q: sessionFilter });
+    const timeout = setTimeout(() => request(`projects/${encodeURIComponent(projectId)}/sessions?${params}`)
+      .then((r) => { if (live) setProjectPage({ id: projectId, items: r.sessions, total: r.total, cursor: r.nextCursor || r.sessions.length, hasMore: r.hasMore, loading: false }); })
+      .catch((e) => { if (live) { setError(e.message); setProjectPage((p) => ({ ...p, loading: false })); } }), 200);
+    return () => { live = false; clearTimeout(timeout); };
+  }, [projectId, sort, sessionFilter, directoryFilter]);
+  const loadMoreSessions = async () => {
+    if (!projectPage.hasMore || projectPage.loading) return;
+    setProjectPage((p) => ({ ...p, loading: true }));
+    const params = new URLSearchParams({ limit: '30', sort, directory: directoryFilter, q: sessionFilter, cursor: String(projectPage.cursor) });
+    try {
+      const r = await request(`projects/${encodeURIComponent(projectPage.id)}/sessions?${params}`);
+      setProjectPage((p) => ({ ...p, items: [...p.items, ...r.sessions], total: r.total, cursor: r.nextCursor || (p.items.length + r.sessions.length), hasMore: r.hasMore, loading: false }));
+    } catch (e) { setError(e.message); setProjectPage((p) => ({ ...p, loading: false })); }
+  };
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' || e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
@@ -394,7 +459,6 @@ export default function App() {
   const project = projects.find((p) => p.id === projectId);
   const selected = sessions.find((s) => s.id === selectedId);
   const visibleProjects = projects.filter((p) => `${projectName(p)} ${p.paths.join(' ')}`.toLowerCase().includes(projectFilter.toLowerCase()));
-  const visibleSessions = useMemo(() => sessions.filter((s) => s.projectId === projectId && (!directoryFilter || s.directory === directoryFilter) && s.title.toLowerCase().includes(sessionFilter.toLowerCase())).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (sort === 'title' ? a.title.localeCompare(b.title) : sort === 'messages' ? b.messageCount - a.messageCount : sort === 'oldest' ? (a.lastActivity || '').localeCompare(b.lastActivity || '') : (b.lastActivity || '').localeCompare(a.lastActivity || ''))), [sessions, projectId, sort, sessionFilter, directoryFilter]);
   const meta = async (kind, id, patch) => {
     try {
       await request(`meta/${kind}/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
@@ -438,15 +502,18 @@ export default function App() {
         <aside className="session-panel">
           <div className="session-heading"><div className="session-heading-top"><button className="text-back" onClick={() => go('/projects')}>← 所有项目</button><div className="project-tools"><ActionHint text={project.pinned ? '取消置顶项目' : '置顶项目，方便快速找到'}><button onClick={() => meta('projects', project.id, { pinned: !project.pinned })}>{project.pinned ? '★ 已置顶' : '☆ 置顶项目'}</button></ActionHint><ActionHint text="尝试在文件管理器中打开项目工作目录"><button onClick={() => open(project.paths[0])}>打开目录</button></ActionHint></div></div><div className="eyebrow">项目档案</div><h2>{projectName(project)}</h2><div className="project-identity" title={project.paths.join('\n')}>{project.paths[0] || project.worktree}</div><Editor title="项目别名" value={project.alias} placeholder="添加别名" onSave={(alias) => meta('projects', project.id, { alias })} /><Editor title="项目备注" value={project.note} placeholder="添加备注" onSave={(note) => meta('projects', project.id, { note })} /></div>
           <div className="sessions-title">
-            <div className="sessions-title-row"><span>会话 <small>{visibleSessions.length}</small></span><select aria-label="会话排序" value={sort} onChange={(e) => setSort(e.target.value)}><option value="recent">最近</option><option value="oldest">最早</option><option value="messages">消息数</option><option value="title">标题</option></select></div>
+            <div className="sessions-title-row"><span>会话 <small>{projectPage.total}</small></span><select aria-label="会话排序" value={sort} onChange={(e) => setSort(e.target.value)}><option value="recent">最近</option><option value="oldest">最早</option><option value="messages">消息数</option><option value="title">标题</option></select></div>
             <div className="sessions-filters"><input className="session-filter" aria-label="按会话名称筛选" placeholder="筛选会话…" value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)} />{project.paths.length > 1 && <select className="directory-filter" aria-label="按工作路径筛选" title={directoryFilter || '所有工作路径'} value={directoryFilter} onChange={(e) => setDirectoryFilter(e.target.value)}><option value="">所有工作路径</option>{project.paths.map((p) => <option key={p} value={p}>{p}</option>)}</select>}</div>
           </div>
-          <div className="session-scroll">{visibleSessions.map((s) => <div key={s.id} className={`session-item ${s.id === selectedId ? 'selected' : ''}`}><button className="session-target" onClick={() => go(`/projects/${encodeURIComponent(project.id)}/sessions/${encodeURIComponent(s.id)}`)}><strong>{s.pinned ? '★ ' : ''}{s.title}</strong><span className="session-sub">{age(s.lastActivity)} <span>·</span> {s.messageCount} 条消息</span>{s.tags?.length > 0 && <small className="session-dir">{s.tags.join(' · ')}</small>}{project.paths.length > 1 && <small className="session-dir">{s.directory}</small>}</button><button className="session-pin" onClick={() => meta('sessions', s.id, { pinned: !s.pinned })} title={s.pinned ? '取消置顶' : '置顶会话'} aria-label={s.pinned ? '取消置顶' : '置顶会话'}>{s.pinned ? '★' : '☆'}</button></div>)}</div>
+          <div className="session-scroll">{projectPage.items.map((s) => <div key={s.id} className={`session-item ${s.id === selectedId ? 'selected' : ''}`}><button className="session-target" onClick={() => go(`/projects/${encodeURIComponent(project.id)}/sessions/${encodeURIComponent(s.id)}`)}><strong>{s.pinned ? '★ ' : ''}{s.title}</strong>{s.firstQuestion && <span className="session-preview">{short(s.firstQuestion, 96)}</span>}<span className="session-sub">{age(s.lastActivity)} <span>·</span> {s.messageCount} 条消息</span>{s.tags?.length > 0 && <small className="session-dir">{s.tags.join(' · ')}</small>}{project.paths.length > 1 && <small className="session-dir">{s.directory}</small>}</button><button className="session-pin" onClick={() => meta('sessions', s.id, { pinned: !s.pinned })} title={s.pinned ? '取消置顶' : '置顶会话'} aria-label={s.pinned ? '取消置顶' : '置顶会话'}>{s.pinned ? '★' : '☆'}</button></div>)}</div>
+          {projectPage.loading && !projectPage.items.length && <div className="session-empty">正在载入会话…</div>}
+          {!projectPage.loading && !projectPage.items.length && <div className="session-empty">没有匹配的会话。</div>}
+          {projectPage.hasMore && <button className="session-more" onClick={loadMoreSessions} disabled={projectPage.loading}>{projectPage.loading ? '加载中…' : `加载更多（还有 ${projectPage.total - projectPage.items.length} 段）`}</button>}
         </aside>
         {selectedId && selected ? <Reader key={`${selected.id}:${selected.title}`} id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go(`/projects/${encodeURIComponent(project.id)}`)} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} /> : <div className="project-placeholder"><div className="placeholder-symbol">⌁</div><div className="eyebrow">PROJECT ARCHIVE</div><h2>把上下文找回来。</h2><p>从左侧选择一段对话，查看提问、回复和操作过程。</p><div>{project.sessionCount} 段会话分布在 {project.paths.length} 个工作路径中</div></div>}
       </div>}
-      {index && section === 'all' && selectedId && selected && <Reader id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go('/all' + (q ? `?q=${encodeURIComponent(q)}` : ''))} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} />}
-       {index && section === 'all' && !selectedId && <main className="all-page"><div className="eyebrow">DISCOVERY / 跨项目找回</div><h1>全部记录</h1><p className="lead">不记得在哪个项目？从标题、路径或历史消息中找回线索。</p><div className={`global-search-wrap ${q.trim() && (searching || results?.query !== q) ? 'is-searching' : ''}`}><Icon name="search" /><input className="global-search" aria-label="搜索全部记录" placeholder="搜索项目、会话或消息正文…" value={query} onChange={(e) => { setQuery(e.target.value); setResults(null); setSearching(!!e.target.value.trim()); history.replaceState(null, '', `/all${e.target.value ? `?q=${encodeURIComponent(e.target.value)}` : ''}`); setUrl(current()); }} /><kbd>⌘ K</kbd></div>{q.trim() && (searching || results?.query !== q) && !error && <div className="search-progress" role="status"><span className="search-spinner" aria-hidden="true" />正在检索所有历史消息<span className="search-dots" aria-hidden="true">…</span></div>}{q.trim() && !searching && results?.query === q && <><div className="results-heading" role="status">{results.total} 个匹配会话</div><div className="result-list">{results.results.map((r) => <button key={r.sessionId} onClick={() => go(`/all/sessions/${encodeURIComponent(r.sessionId)}?${new URLSearchParams({ q, ...(r.messageId ? { message: r.messageId } : {}) })}`)}><div className="result-kind"><Highlight text={r.projectName} query={q} /> <span>/ {r.matchField === 'content' ? '正文命中' : '元数据命中'}</span></div><strong><Highlight text={r.title} query={q} /></strong><p><Highlight text={short(r.snippet, 200)} query={q} /></p><time>{age(r.updatedAt)}</time></button>)}</div>{results.total > results.results.length && <div className="search-status">当前仅展示前 {results.results.length} 项，请缩小关键词。</div>}</>}{!q.trim() && <><div className="overview-heading"><h2>路径索引</h2><span>{new Set(sessions.map((s) => s.directory)).size} 个工作路径</span></div><div className="path-index">{projects.map((p) => <div key={p.id}><h3 onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)}>{projectName(p)} <Icon name="chevron" /></h3>{p.paths.map((path) => <div key={path} title={path}>{path}</div>)}</div>)}</div></>}</main>}
+      {index && section === 'all' && selectedId && selected && <Reader id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go(allHref(q, scope))} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} />}
+       {index && section === 'all' && !selectedId && <main className="all-page"><div className="eyebrow">DISCOVERY / 跨项目找回</div><h1>全部记录</h1><p className="lead">不记得在哪个项目？从标题、路径或历史消息中找回线索。</p><div className={`global-search-wrap ${q.trim() && (searching || results?.query !== q || results?.scope !== scope) ? 'is-searching' : ''}`}><Icon name="search" /><input className="global-search" aria-label="搜索全部记录" placeholder="搜索项目、会话或消息正文…" value={query} onChange={(e) => { const next = e.target.value; setQuery(next); setResults(null); setSearching(!!next.trim()); history.replaceState(null, '', allHref(next, scope)); setUrl(current()); }} /><kbd>⌘ K</kbd></div>{q.trim() && <div className="search-scope" role="group" aria-label="搜索范围">{SCOPES.map(([value, label]) => <button key={value} className={scope === value ? 'is-on' : ''} aria-pressed={scope === value} onClick={() => changeScope(value)}>{label}</button>)}</div>}{q.trim() && (searching || results?.query !== q || results?.scope !== scope) && !error && <div className="search-progress" role="status"><span className="search-spinner" aria-hidden="true" />正在检索所有历史消息<span className="search-dots" aria-hidden="true">…</span></div>}{q.trim() && !searching && results?.query === q && results?.scope === scope && <><div className="results-heading" role="status">{results.total} 处匹配{results.truncated ? '（已截断，请缩小范围）' : ''}</div><div className="result-list">{results.results.map((r) => <button key={`${r.sessionId}:${r.messageId || r.matchField}`} onClick={() => go(`/all/sessions/${encodeURIComponent(r.sessionId)}?${new URLSearchParams({ q, scope, ...(r.messageId ? { message: r.messageId } : {}) })}`)}><div className="result-kind"><Highlight text={r.projectName} query={q} /> <span>/ {matchLabel[r.matchField] || '命中'}</span></div><strong><Highlight text={r.title} query={q} /></strong><p><Highlight text={short(r.snippet, 200)} query={q} /></p><time>{age(r.updatedAt)}</time></button>)}</div>{results.hasMore && <div className="search-status">当前仅展示前 {results.results.length} 处，请缩小关键词或范围。</div>}</>}{!q.trim() && <><div className="overview-heading"><h2>路径索引</h2><span>{new Set(sessions.map((s) => s.directory)).size} 个工作路径</span></div><div className="path-index">{projects.map((p) => <div key={p.id}><h3 onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)}>{projectName(p)} <Icon name="chevron" /></h3>{p.paths.map((path) => <div key={path} title={path}>{path}</div>)}</div>)}</div></>}</main>}
       {index && section === 'pinned' && <main className="all-page"><div className="eyebrow">SHORTLIST / 快速回到重要工作</div><h1>已置顶</h1><div className="overview-heading"><h2>项目</h2></div><div className="pinned-list">{projects.filter((p) => p.pinned).map((p) => <button key={p.id} onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)}>▤　{projectName(p)} <span>{p.sessionCount} 个会话</span></button>)}</div><div className="overview-heading"><h2>会话</h2></div><div className="pinned-list">{sessions.filter((s) => s.pinned).map((s) => <button key={s.id} onClick={() => go(`/projects/${encodeURIComponent(s.projectId)}/sessions/${encodeURIComponent(s.id)}`)}>{s.title}<span>{projectName(projects.find((p) => p.id === s.projectId))}</span></button>)}</div></main>}
     </div>
   </div>;
