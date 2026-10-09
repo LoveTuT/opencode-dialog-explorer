@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { openPath } from './server/open.js';
 import { archiveIndex, projectSessions, sessionMessages, questionToc, aroundMessage, findInSession, archiveSearch } from './server/archive.js';
-import { updateMeta } from './server/meta.js';
+import { updateMeta, updateOrder } from './server/meta.js';
 import { renameSession } from './server/rename.js';
 
 // API that reads local transcripts from the OpenCode SQLite database and serves
@@ -50,6 +50,15 @@ async function apiMiddleware(req, res, next) {
         if (route[4] === 'find') return json(200, findInSession(id, url.searchParams.get('q')));
         if (route[4] === 'around') return json(200, aroundMessage(id, url.searchParams.get('messageId')));
         if (!route[4]) return json(200, sessionMessages(id, { cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit') }));
+      }
+      if (url.pathname === '/api/archive/meta/order' && req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 200000) throw new Error('request too large');
+        }
+        const parsed = JSON.parse(body);
+        return json(200, await updateOrder(parsed.kind, parsed.ids));
       }
       if (route[2] === 'meta' && ['projects', 'sessions'].includes(route[3]) && route[4] && req.method === 'PUT') {
         let body = '';

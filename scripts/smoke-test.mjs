@@ -22,10 +22,13 @@ check('every session has a resume command', sessions.every((s) => /^opencode /.t
 check('sessions expose firstQuestion', sessions.every((s) => typeof s.firstQuestion === 'string'));
 check('no future timestamps', sessions.every((s) => !s.lastActivity || Date.parse(s.lastActivity) <= Date.now() + 60000));
 check('no empty titles', sessions.every((s) => s.title && String(s.title).trim()));
-check('projects pinned-first then by activity', projects.every((p, i) => {
+check('projects pinned-first then by custom order/activity', projects.every((p, i) => {
   if (i === 0) return true;
   const prev = projects[i - 1];
   if (!!prev.pinned !== !!p.pinned) return !!prev.pinned && !p.pinned;
+  const prevOrder = Number.isInteger(prev.order) ? prev.order : Infinity;
+  const order = Number.isInteger(p.order) ? p.order : Infinity;
+  if (prevOrder !== order) return prevOrder < order;
   return (prev.lastActivity || '').localeCompare(p.lastActivity || '') >= 0;
 }));
 

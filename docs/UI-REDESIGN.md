@@ -1,6 +1,6 @@
 # opencode Dialog Explorer：项目优先的 UI / 交互重构方案
 
-> 状态：设计与实施规格；项目优先界面及核心阅读/检索能力已实现，详见文末「实施进度与差距」。调研日期：2026-10-08，2026-10-09 更新：提问索引最终形态（紧凑「琴键」+ hover/聚焦预览）、会话内查找（`<mark>` 高亮 + 上/下一处）、会话列表首问摘要与服务端分页、旧 API 收敛（仅保留 `/api/archive/*`）、消息级多命中检索、`around` SQL 定点窗口、目录回退身份（`dir:<hash>` + `identitySource`）已落地。[早期实施规划](./IMPLEMENTATION.md) 保留历史决策与 P0 记录，冲突时以本文为准。
+> 状态：设计与实施规格；项目优先界面及核心阅读/检索能力已实现，详见文末「实施进度与差距」。调研日期：2026-10-08，2026-10-09 更新：提问索引最终形态（紧凑「琴键」+ hover/聚焦预览）、会话内查找（`<mark>` 高亮 + 上/下一处）、会话列表首问摘要与服务端分页、置顶项目/会话自定义排序（sidecar `order`）、旧 API 收敛（仅保留 `/api/archive/*`）、消息级多命中检索、`around` SQL 定点窗口、目录回退身份（`dir:<hash>` + `identitySource`）已落地。[早期实施规划](./IMPLEMENTATION.md) 保留历史决策与 P0 记录，冲突时以本文为准。
 
 ## 1. 定位与设计哲学
 
@@ -42,7 +42,7 @@
 
 - **项目**（默认 `/projects`）：项目列表，不预加载全部会话卡片；置顶在前，其余按最近活动排列；支持按名称 / 完整路径过滤项目。
 - **全部记录**（`/all`）：所有项目、目录和会话的索引 + 高级搜索；默认先显示项目索引与最近少量会话，**不一次性挂载全部详情或全部卡片**。
-- **已置顶**（`/pinned`）：置顶项目与置顶会话，项目归属可见；作为快捷入口，不引入第二套所有权。
+- **已置顶**（`/pinned`）：置顶项目与置顶会话，项目归属可见；作为快捷入口，不引入第二套所有权。置顶项目可整行拖动或用 ↑ / ↓ 调整先后（顺序仅存本应用 sidecar，不改主库）；置顶会话按「项目顺序 → 会话自定义顺序」排列。
 
 **上下文层级**：`项目 (opencode project_id) → 目录变体 (session.directory，按需分组) → 会话 (session.id) → 用户提问锚点 / 消息`。未知 `project_id` 进入「未归属」虚拟分组；不修改原始归属。默认项目中全部会话按最近活动展示，跨目录时显示目录短标；用户可切换「按工作目录分组」。`project.worktree` 仅作来源提示，不替代会话实际 `session.directory`。同名项目在导航中补充路径 / ID 后缀作区分。
 
@@ -80,7 +80,7 @@
 ### 3.2 三个核心页面
 
 1. **项目总览**：标题「项目」，一排轻量状态（项目数、会话数、最后刷新时间）；项目行显示可区分的名称、工作目录提示、会话数、最近活动、置顶状态；默认仅项目，支持查找项目及打开最近项目。无数据时引导核查 opencode 数据目录，不诱导创建空项目。
-2. **项目页**：顶部项目名 / 别名与来源路径 / 操作（置顶、编辑别名、打开目录）；会话列表用双行紧凑项，标题优先，其下为**首条用户提问预览**（`firstQuestion`，若无则省略），右侧时间、消息数与标签；状态栏支持最近 / 最早 / 标题 / 消息数，置顶分组恒在顶部；选中后同页展示转录。会话列表由**服务端分页**（`/api/archive/projects/:id/sessions`），默认每页 30、底部「加载更多」追加，列表标题显示过滤后的总数。项目跨工作目录时可查看所有路径并按目录过滤。
+2. **项目页**：顶部项目名 / 别名与来源路径 / 操作（置顶、编辑别名、打开目录）；会话列表用双行紧凑项，标题优先，其下为**首条用户提问预览**（`firstQuestion`，若无则省略），右侧时间、消息数与标签；状态栏支持最近 / 最早 / 标题 / 消息数，置顶分组恒在顶部；选中后同页展示转录。会话列表由**服务端分页**（`/api/archive/projects/:id/sessions`），默认每页 30、底部「加载更多」追加，列表标题显示过滤后的总数。置顶会话可整行拖动或用 ↑ / ↓ 调整在置顶组内的先后（仅本应用展示）。项目跨工作目录时可查看所有路径并按目录过滤。
 3. **全部记录**：全局搜索输入、范围切换「全部 / 标题与路径 / 正文」，匹配结果按最近活动或相关度排序（后端支持 `sort=recent|relevance`，界面默认最近）。零查询仅展示项目路径索引与近期会话小样本；查询结果以「项目 › 会话 › 命中字段」呈现，同一会话可有多条正文命中，正文命中可直接跳到稳定消息锚点；当前正文检索为带边界的 SQL 扫描（超出置 `truncated`），完整磁盘索引见 §6。
 
 ## 4. 阅读、预览与管理交互
@@ -99,9 +99,9 @@
 - 点击/激活时若目标尚未加载，先请求包含该锚点的定点窗口（`GET /api/archive/sessions/:id/around?messageId=`）再滚动并短暂高亮，**不** `scrollIntoView` 到不存在的节点。
 - 键盘可达、Esc 关闭预览、尊重 `prefers-reduced-motion`；阅读区工具条的「收起/打开提问目录」可折叠该索引。
 
-**项目管理（sidecar）**：项目置顶 / 别名 / 备注和会话置顶 / 标签 / 备注；默认不改变 opencode `project` 记录和目录层级，不允许通过网页任意把 session 移入另一项目。「按目录分组」是视图设置，不是迁移数据。项目别名仅改变本应用展示，保留原始项目名与路径的查看入口。会话**改名**若启用，清楚说明写入 opencode `session.title` 并保留原始 `time_updated`；用户可取消编辑。星标迁移从 `ocde.starred` 只做一次、映射 `opencode:ses_…`，冲突时保留服务端已存在置顶值；迁移有完成标记及可重试失败提示，不用裸 localStorage 长期充当事实来源。明确不做删除、归档和跨项目迁移（不同于参考产品）。
+**项目管理（sidecar）**：项目置顶 / 别名 / 备注和会话置顶 / 标签 / 备注；默认不改变 opencode `project` 记录和目录层级，不允许通过网页任意把 session 移入另一项目。「按目录分组」是视图设置，不是迁移数据。项目别名仅改变本应用展示，保留原始项目名与路径的查看入口。**置顶排序**：置顶项目在 `/pinned`、置顶会话在项目页会话列表可整行拖动或用 ↑ / ↓ 调整；Motion（`motion/react`）为换位提供布局动画，点击按钮立即乐观重排，拖动途中只预览、松手后持久化一次；写入失败回滚，`prefers-reduced-motion` 下关闭过渡。顺序以整数 `order` 存于 sidecar（`projects`/`sessions`），**仅本应用展示**，不改动主库；排序永远只在置顶组内进行，不跨越未置顶项。会话**改名**若启用，清楚说明写入 opencode `session.title` 并保留原始 `time_updated`；用户可取消编辑。星标迁移从 `ocde.starred` 只做一次、映射 `opencode:ses_…`，冲突时保留服务端已存在置顶值；迁移有完成标记及可重试失败提示，不用裸 localStorage 长期充当事实来源。明确不做删除、归档和跨项目迁移（不同于参考产品）。
 
-**操作和反馈**：标题行省略号菜单集中「置顶、标签、备注、改名、复制恢复命令、复制 session ID」；不可用的目录打开动作需真实错误反馈，目前 `openPath()` 返回 `ok` 仅代表发起打开命令，未来更改文案为「已尝试打开」或改造结果回报，不能承诺已打开。刷新有时间戳与加载态；后台索引尚未完成显示进度或「内容搜索暂不可用」，不能无提示给出遗漏结果。
+**操作和反馈**：会话属性栏用「编辑会话信息」按钮打开弹窗，集中编辑会话**标题 / 标签 / 备注**（标题同时保留点击原地快速编辑并写回 opencode，标签 / 备注仅可在弹窗内编辑）；弹窗为半透明磨砂玻璃面板叠加虚化背景，支持 Esc / 点蒙层关闭、锁定背景滚动、`prefers-reduced-motion` 下关闭动画，项目别名 / 备注沿用同一套原地编辑。操作区另含仅问答、会话内查找、复制恢复命令、复制 Session ID。不可用的目录打开动作需真实错误反馈，目前 `openPath()` 返回 `ok` 仅代表发起打开命令，未来更改文案为「已尝试打开」或改造结果回报，不能承诺已打开。刷新有时间戳与加载态；后台索引尚未完成显示进度或「内容搜索暂不可用」，不能无提示给出遗漏结果。
 
 **检索契约**：项目筛选严格匹配 `project_id`，目录筛选匹配完整 `session.directory`；普通查询按输入词全包含，标题/别名/路径/标签/备注/用户提问/助手正文各字段可过滤，搜索 API 返回 `scope、projectId、sessionId、messageId、snippet、matchField、score、updatedAt` 与分页信息。相关度排序优先精确标题、项目名，其次提问，再次正文；同分再按最近活动及 ID 稳定排序。结果页显示总数或明确「仅当前页 / 估计数」，高亮需保留原文大小写并限制片段长度。查询变更取消旧请求、显示加载 / 失败 / 空结果 / 截断状态，不能把旧搜索结果当新结果。当前已实现可定位的**消息级内容检索**；在升级到磁盘索引前，超宽查询明确标记为 `truncated`（结果已截断），不得暗示覆盖全部历史。
 
@@ -124,7 +124,7 @@
 
 先用读取 `project` 表的 `project.id` 作为稳定项目 ID，`session.project_id` 归属；仅在某些 opencode 版本无 `project` 表 / `project_id` 时回退到**完整规范化 directory** 派生的 `dir:<hash>`，并在数据上标记 `identitySource=directory`；不同来源的项目 ID 有前缀，避免碰撞。路径仅做规范化用于等价判断，**不依赖真实文件存在，不解析符号链接、不自动合并**。原始 `session.directory` 保留供过滤和恢复命令使用。会话仍仅显示顶层非空记录；子会话的消息是否计入父会话正文需要调研实际数据后单独决策，不得静默混入。
 
-Sidecar 建议 `data/meta.json`（已在早期规划提出）：版本字段 + `projects`（项目 ID -> pinned / alias / note / order）和 `sessions`（session ID -> pinned / pinOrder / tags / note / order）。同时建立 `data/` 忽略规则；不删除已经消失的记录，保留以防短暂主库不可用 / 工作目录切换，清理由明确维护动作完成。每次字段级更新做校验与原子写入，串行化并发请求以免覆盖；写失败返回错误并恢复乐观 UI。归属主库变化时 sidecar 以稳定 ID 挂靠，显示按新归属；目录回退 ID 变更时提示别名可能未匹配，不静默合并。
+Sidecar `data/meta.json`（已实现）：`projects`（项目 ID -> `pinned / alias / note / order`）和 `sessions`（session ID -> `pinned / tags / note / order`）。`order` 为整数，**仅在置顶组内生效**；会话的 `order` 作用于其所在项目。同时建立 `data/` 忽略规则；不删除已经消失的记录，保留以防短暂主库不可用 / 工作目录切换，清理由明确维护动作完成。每次字段级更新做校验与原子写入，串行化并发请求以免覆盖；写失败返回错误并恢复乐观 UI。归属主库变化时 sidecar 以稳定 ID 挂靠，显示按新归属；目录回退 ID 变更时提示别名可能未匹配，不静默合并。
 
 当前实现 API（命名空间 `/api/archive/*`；读连接只读，改名写连接独立）：
 
@@ -137,7 +137,8 @@ Sidecar 建议 `data/meta.json`（已在早期规划提出）：版本字段 + `
 | GET | `/api/archive/sessions/:id/around?messageId=&limit=` | 命中消息**前后定点窗口**（一条 SQL 取回原消息前后各若干条，不再逐页逼近）；TOC 与全局搜索深链通用 |
 | GET | `/api/archive/sessions/:id/find?q=&limit=` | **会话内查找**：按阅读顺序返回每条含关键词的消息 `{seq,messageId,snippet}`（每消息一处），供上/下一处定位 |
 | GET | `/api/archive/search?q=&scope=&sort=&cursor=&limit=&project=` | **消息级多命中**（每会话可多条、带 `messageId` 锚点可定位原文）；`scope=all\|metadata\|content`、`sort=recent\|relevance`、游标分页，返回 `scope,sessionId,projectId,messageId,snippet,matchField,score,updatedAt` 与 `total/hasMore/truncated` |
-| GET/PUT | `/api/archive/meta/projects/:id`、`/api/archive/meta/sessions/:id` | sidecar 字段级更新，限制长度与类型 |
+| GET/PUT | `/api/archive/meta/projects/:id`、`/api/archive/meta/sessions/:id` | sidecar 字段级更新，限制长度与类型（`projects`/`sessions` 均含 `pinned / alias|tags / note / order`） |
+| POST | `/api/archive/meta/order` | 批量置顶排序：body `{kind:"projects"\|"sessions",ids:[…]}`，按数组顺序写入 `order=index`（原子、串行化；仅改给定项） |
 | PATCH | `/api/archive/sessions/:id/title` | 唯一主库写入：`session.title`，明确成功 / 冲突 / 忙碌 |
 | GET | `/api/open?path=` | 非承诺式反馈；未来写入型打开可评估改 POST |
 
@@ -190,6 +191,7 @@ Sidecar 建议 `data/meta.json`（已在早期规划提出）：版本字段 + `
 - **目录回退身份**：无 `project` 表 / `project_id` 时以 `dir:<sha1(规范化目录)>` 作为稳定项目 ID 并暴露 `identitySource`，避免同名目录被静默合并。
 - **会话内查找**：`/api/archive/sessions/:id/find` 返回每条命中消息，阅读区「查找」工具条支持上/下一处、Markdown 内 `<mark>` 高亮与当前命中强调，跳到未加载命中时用 `around` 定位。高亮插件独立为 `src/rehypeFindHighlight.js`（unified attacher，经 `[[rehypeFindHighlight, term]]` 传入 `rehypePlugins`），并有 `scripts/find-highlight-test.mjs` 回归测试防止接线回退。
 - **会话列表首问摘要 + 服务端分页**：会话摘要新增 `firstQuestion`（首条用户提问，供列表预览）；项目页会话列表改用 `/api/archive/projects/:id/sessions` 服务端分页（默认 30/页，「加载更多」追加，服务端执行排序与过滤）。
+- **置顶自定义排序与动画**：`order` 存于 sidecar（`projects`/`sessions`），`POST /api/archive/meta/order` 批量写入；`/pinned` 页置顶项目、项目页置顶会话可拖动整行或用 ↑ / ↓ 调整，Motion 布局动画平滑衔接、乐观更新失败回滚，拖拽只在松手后写入；仅影响本应用展示，不改主库；排序只在置顶组内、会话 `order` 作用于所在项目。
 
 **尚未达到目标规格（D4/D5 待办）**：
 

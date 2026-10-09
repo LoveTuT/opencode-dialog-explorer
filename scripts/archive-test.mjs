@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { archiveIndex, projectSessions, sessionMessages, questionToc, aroundMessage, findInSession, archiveSearch, finalAnswerIds } from '../server/archive.js';
-import { updateMeta } from '../server/meta.js';
+import { archiveIndex, projectSessions, sessionMessages, questionToc, aroundMessage, findInSession, archiveSearch, finalAnswerIds, sessionSort, sortProjects } from '../server/archive.js';
+import { updateMeta, updateOrder } from '../server/meta.js';
 import { renameSession } from '../server/rename.js';
 
 const { projects, sessions } = archiveIndex();
@@ -23,6 +23,24 @@ assert.deepEqual([...finalAnswerIds([
   { id: 'q3', role: 'user' },
   { id: 'a3', role: 'assistant', hasText: 1 },
 ])], ['a2', 'a3']);
+
+// custom pinned order (sidecar display only)
+const item = (id, pinned, order, lastActivity) => ({ id, pinned, order, lastActivity, title: id, messageCount: 1 });
+assert.deepEqual(
+  sessionSort([item('c', false, undefined, '2024-03-01'), item('a', true, 2, '2024-01-01'), item('b', true, 0, '2024-02-01'), item('d', false, undefined, '2024-04-01')], 'recent').map((s) => s.id),
+  ['b', 'a', 'd', 'c']);
+assert.deepEqual(
+  sortProjects([item('x', true, 5, '2024-01-01'), item('y', true, 1, '2020-01-01'), item('z', false, undefined, '2025-01-01')]).map((p) => p.id),
+  ['y', 'x', 'z']);
+assert.deepEqual(
+  sessionSort([item('n', true, undefined, '2024-05-01'), item('o', true, 0, '2024-01-01')], 'recent').map((s) => s.id),
+  ['o', 'n']);
+assert.throws(() => updateOrder('bad', ['x']), /invalid metadata target/);
+assert.throws(() => updateOrder('projects', []), /invalid order list/);
+assert.throws(() => updateOrder('projects', ['a', 'a']), /duplicate ids/);
+assert.throws(() => updateOrder('projects', ['']), /invalid order id/);
+assert.throws(() => updateMeta('sessions', 'test', { order: -1 }), /invalid order/);
+assert.throws(() => updateMeta('sessions', 'test', { order: 1.5 }), /invalid order/);
 
 if (sessions.length) {
   const sample = sessions.find((s) => s.messageCount > 40) || sessions[0];

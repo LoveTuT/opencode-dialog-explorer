@@ -137,16 +137,43 @@ export function archiveIndex() {
     if (!p.paths.includes(s.directory)) p.paths.push(s.directory);
     if (!p.lastActivity || s.lastActivity > p.lastActivity) p.lastActivity = s.lastActivity;
   }
-  return { projects: [...projects.values()].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.lastActivity || '').localeCompare(a.lastActivity || '')), sessions };
+  return { projects: sortProjects([...projects.values()]), sessions };
 }
 
-function sessionSort(list, sort) {
-  const byPin = (a, b) => Number(!!b.pinned) - Number(!!a.pinned);
+// Custom display order from the sidecar: only meaningful within the pinned
+// group; items without an order sink below the ordered ones.
+function orderOf(item) {
+  return item && Number.isInteger(item.order) ? item.order : Number.POSITIVE_INFINITY;
+}
+
+// Pinned first; within the pinned group honour the custom order (then activity),
+// otherwise newest activity first.
+export function sortProjects(list) {
+  return [...list].sort((a, b) => {
+    if (!!b.pinned !== !!a.pinned) return Number(!!b.pinned) - Number(!!a.pinned);
+    if (a.pinned) {
+      const diff = orderOf(a) - orderOf(b);
+      if (diff) return diff;
+    }
+    return (b.lastActivity || '').localeCompare(a.lastActivity || '');
+  });
+}
+
+// Pinned sessions come first in their custom order; the selected sort applies
+// to the unpinned remainder.
+export function sessionSort(list, sort) {
   const cmp = sort === 'title' ? (a, b) => a.title.localeCompare(b.title)
     : sort === 'messages' ? (a, b) => b.messageCount - a.messageCount
       : sort === 'oldest' ? (a, b) => (a.lastActivity || '').localeCompare(b.lastActivity || '')
         : (a, b) => (b.lastActivity || '').localeCompare(a.lastActivity || '');
-  return [...list].sort((a, b) => byPin(a, b) || cmp(a, b));
+  return [...list].sort((a, b) => {
+    if (!!b.pinned !== !!a.pinned) return Number(!!b.pinned) - Number(!!a.pinned);
+    if (a.pinned) {
+      const diff = orderOf(a) - orderOf(b);
+      if (diff) return diff;
+    }
+    return cmp(a, b);
+  });
 }
 
 // Server-side paginated session list for one project. Pinned first, then the

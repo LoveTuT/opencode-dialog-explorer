@@ -35,8 +35,11 @@ and focused on a single source: the local opencode SQLite database.
   session can contribute several hits and each jumps straight to its message.
   Press `Ctrl+K` / `⌘K` or `/` to focus search.
 - **Organize your archive.** Pin projects and sessions; add project aliases and
-  notes, or session tags and notes. Rename a session when you want its title to
-  change in opencode itself.
+  notes, or session tags and notes. Drag pinned projects (on **Pinned**) or
+  pinned sessions (inside a project), or use ↑ / ↓ for precise keyboard-friendly
+  moves. Rows animate immediately and persist their order to the local sidecar;
+  they never change opencode data. Rename a session when you want
+  its title to change in opencode itself.
 - **Return to your work.** Copy the resume command or session ID, or try to open
   the project folder in your OS file manager. The layout adapts to narrow screens
   and can be installed as a PWA.
@@ -96,7 +99,7 @@ private transcripts and is not intended for network access.
 | Data | Location | Behavior |
 |------|----------|----------|
 | Conversations, projects, and message content | OpenCode data directory (see platform paths above) | Read-only except session renaming |
-| Pins, aliases, tags, and notes | `data/meta.json` | Local sidecar; Git-ignored |
+| Pins, ordering, aliases, tags, and notes | `data/meta.json` | Local sidecar; Git-ignored |
 | Session title | opencode's `session.title` | Updated only when you rename a session; `time_updated` is preserved |
 
 The app has no telemetry or external CDN; the UI requests data from its local

@@ -1,8 +1,90 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, Reorder, useReducedMotion } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeFindHighlight from './rehypeFindHighlight.js';
+import { moveId } from './reorder.js';
+
+// Optimistic custom order for the pinned subset. `items` is the server-ordered
+// list; `persist(ids)` stores the new order and must reject on failure so we can
+// roll back. The local order resets only when the *set* of pinned ids changes
+// (pin toggled, filter changed, page replaced) — not on order-only changes,
+// because the source list (e.g. the project page) is not refetched after we
+// persist, so trusting its stale order would undo our optimistic move.
+function usePinnedOrder(items, persist, onError) {
+  const serverIds = items.map((item) => item.id);
+  const setSig = serverIds.slice().sort().join('\u0000');
+  const [order, setOrder] = useState(serverIds);
+  const [saving, setSaving] = useState(false);
+  const setSigRef = useRef(setSig);
+  const orderRef = useRef(order);
+  const savingRef = useRef(false);
+  const dragStartRef = useRef(null);
+  const didDragRef = useRef(false);
+  const downRef = useRef(null);
+  const scope = setSig;
+  orderRef.current = order;
+  useEffect(() => {
+    if (setSigRef.current !== setSig) {
+      setSigRef.current = setSig;
+      dragStartRef.current = null;
+      didDragRef.current = false;
+      orderRef.current = serverIds;
+      setOrder(serverIds);
+    }
+    // serverIds is the current server order for this set; setSig guards the update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSig]);
+  const commit = (nextIds, prev = orderRef.current) => {
+    if (savingRef.current || !Array.isArray(nextIds) || nextIds.length !== orderRef.current.length) return;
+    if (nextIds.join('\u0000') === prev.join('\u0000')) return;
+    savingRef.current = true;
+    setSaving(true);
+    orderRef.current = nextIds;
+    setOrder(nextIds);
+    Promise.resolve().then(() => persist(nextIds)).catch((e) => {
+      if (setSigRef.current === scope) {
+        orderRef.current = prev;
+        setOrder(prev);
+      }
+      onError?.(e);
+    }).finally(() => {
+      savingRef.current = false;
+      setSaving(false);
+    });
+  };
+  const preview = (nextIds) => {
+    if (savingRef.current) return;
+    if (nextIds.join('\u0000') !== orderRef.current.join('\u0000')) didDragRef.current = true;
+    orderRef.current = nextIds;
+    setOrder(nextIds);
+  };
+  const beginDrag = () => {
+    dragStartRef.current = orderRef.current;
+    didDragRef.current = false;
+  };
+  const finishDrag = () => {
+    if (didDragRef.current && dragStartRef.current) commit(orderRef.current, dragStartRef.current);
+    dragStartRef.current = null;
+    didDragRef.current = false;
+  };
+  // Remember where a press began so the following click can tell a drag from a tap.
+  const beginPointer = (e) => { downRef.current = { el: e.currentTarget, x: e.clientX, y: e.clientY, t: Date.now() }; };
+  // True when the click landed far from where the press began (i.e. a drag) on the
+  // same control, so the caller must not navigate. Independent of Motion's drag
+  // callbacks and their ordering.
+  const guardRowClick = (e) => {
+    const start = downRef.current;
+    downRef.current = null;
+    if (!start || start.el !== e.currentTarget) return false;
+    if (Date.now() - start.t > 700) return false;
+    return Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6;
+  };
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const ordered = order.map((id) => byId.get(id)).filter(Boolean);
+  return [ordered, commit, preview, beginDrag, finishDrag, beginPointer, guardRowClick, saving];
+}
 
 const endpoint = (path) => '/api/archive/' + path;
 async function request(path, options) {
@@ -189,6 +271,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
   const [findHits, setFindHits] = useState([]);
   const [findIndex, setFindIndex] = useState(0);
   const [findBusy, setFindBusy] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const scroller = useRef(null);
   const pendingAnchor = useRef(null);
   const pendingTop = useRef(false);
@@ -313,8 +396,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
       <div className="eyebrow">{session ? '会话管理' : '会话工具'}</div>
       {session && <div className="session-property-fields">
         <Editor title="会话标题 · 写入 opencode" value={session.title} onSave={onRename} />
-        <Editor title="标签 · 逗号分隔" value={(session.tags || []).join(', ')} placeholder="添加标签" onSave={(tags) => onMeta({ tags: tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean) })} />
-        <Editor title="会话备注" value={session.note} placeholder="添加备注" onSave={(note) => onMeta({ note })} />
+        <button type="button" className="session-info-trigger" onClick={() => setInfoOpen(true)} aria-haspopup="dialog"><span className="session-info-glyph" aria-hidden="true">✎</span>编辑会话信息</button>
       </div>}
       <div className="session-property-actions">
         <ActionHint text="隐藏思考、工具调用和中间回复，每次提问只显示最后一条有正文的回答"><button type="button" className={`qa-toggle${questionsOnly ? ' is-on' : ''}`} role="switch" aria-checked={questionsOnly} onClick={() => onQuestionsOnlyChange(!questionsOnly)}><span className="qa-toggle-track" aria-hidden="true" />仅问答</button></ActionHint>
@@ -324,6 +406,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
         {session && <ActionHint text="复制当前会话的 Session ID"><CopyButton className="id-copy" value={session.id} label="复制 Session ID ↗" onNotify={onNotify} /></ActionHint>}
       </div>
     </div>
+    {session && infoOpen && createPortal(<SessionInfoDialog title={session.title} tags={session.tags || []} note={session.note} onClose={() => setInfoOpen(false)} onSave={async ({ title, tags, note }) => { if (title && title !== session.title) await onRename(title); await onMeta({ tags, note }); }} />, document.body)}
     {findOpen && <div className="find-bar" role="search">
       <input autoFocus className="find-input" aria-label="在当前会话中查找" placeholder="在当前会话中查找…" value={findQuery} onChange={(e) => setFindQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); } else if (e.key === 'Escape') closeFind(); }} />
       <span className="find-count" aria-live="polite">{findBusy ? '检索中…' : findQuery.trim() ? (findHits.length ? `${findIndex + 1} / ${findHits.length}` : '无匹配') : ''}</span>
@@ -361,6 +444,56 @@ function Editor({ title, value, onSave, placeholder = '' }) {
   const [draft, setDraft] = useState(value || '');
   useEffect(() => { setDraft(value || ''); }, [value]);
   return <div className="editor"><div className="editor-label">{title}</div>{editing ? <div className="editor-form"><input autoFocus value={draft} maxLength={120} placeholder={placeholder} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { onSave(draft); setEditing(false); } if (e.key === 'Escape') setEditing(false); }} /><button onClick={() => { onSave(draft); setEditing(false); }}>保存</button><button onClick={() => setEditing(false)}>取消</button></div> : <button className="editor-value" onClick={() => setEditing(true)}>{value || placeholder || '点击编辑'} <span>✎</span></button>}</div>;
+}
+
+// Secondary dialog for title + tags + note (title also has an inline quick-edit in the bar).
+function SessionInfoDialog({ title, tags, note, onSave, onClose }) {
+  const [titleDraft, setTitleDraft] = useState(title || '');
+  const [tagDraft, setTagDraft] = useState((tags || []).join(', '));
+  const [noteDraft, setNoteDraft] = useState(note || '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = previous; };
+  }, [onClose]);
+  const submit = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave({ title: titleDraft.trim(), tags: tagDraft.split(/[,，]/).map((t) => t.trim()).filter(Boolean), note: noteDraft.trim() });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+  return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog-panel" role="dialog" aria-modal="true" aria-label="编辑会话信息">
+      <div className="dialog-head">
+        <div className="dialog-eyebrow">会话信息</div>
+        <h2>编辑会话信息</h2>
+        <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭">✕</button>
+      </div>
+      <label className="dialog-field">
+        <span className="dialog-label">标题 <small>写入 opencode</small></span>
+        <input autoFocus value={titleDraft} placeholder="会话标题" maxLength={120} onChange={(e) => setTitleDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+      </label>
+      <label className="dialog-field">
+        <span className="dialog-label">标签 <small>用逗号分隔，最多 12 个</small></span>
+        <input value={tagDraft} placeholder="例如：工作, 复盘, 待跟进" maxLength={200} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
+      </label>
+      <label className="dialog-field">
+        <span className="dialog-label">备注</span>
+        <textarea value={noteDraft} placeholder="为这段会话留一条备注…" rows={4} maxLength={2000} onChange={(e) => setNoteDraft(e.target.value)} />
+      </label>
+      <div className="dialog-foot">
+        <button type="button" className="dialog-btn" onClick={onClose} disabled={saving}>取消</button>
+        <button type="button" className="dialog-btn primary" onClick={submit} disabled={saving}>{saving ? '保存中…' : '保存'}</button>
+      </div>
+    </div>
+  </div>;
 }
 
 export default function App() {
@@ -460,11 +593,40 @@ export default function App() {
   const selected = sessions.find((s) => s.id === selectedId);
   const visibleProjects = projects.filter((p) => `${projectName(p)} ${p.paths.join(' ')}`.toLowerCase().includes(projectFilter.toLowerCase()));
   const meta = async (kind, id, patch) => {
+    const isSessionPin = kind === 'sessions' && Object.prototype.hasOwnProperty.call(patch, 'pinned');
+    const previousPageItems = isSessionPin ? projectPage.items : null;
+    if (isSessionPin) {
+      setProjectPage((page) => ({ ...page, items: page.items.map((s) => s.id === id ? { ...s, pinned: patch.pinned } : s) }));
+    }
     try {
       await request(`meta/${kind}/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
       await load();
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      if (isSessionPin) setProjectPage((page) => ({ ...page, items: previousPageItems }));
+      setError(e.message);
+    }
   };
+  // Throwing here lets usePinnedOrder roll back its optimistic state.
+  const reorder = async (kind, ids) => {
+    await request('meta/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, ids }) });
+    await load();
+  };
+  const reduceMotion = useReducedMotion();
+  const layoutTransition = reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 42 };
+  const dragFeedback = reduceMotion ? undefined : { scale: 1.02, boxShadow: '0 8px 22px rgba(0, 0, 0, 0.14)', opacity: 1 };
+  const stopDrag = (e) => e.stopPropagation();
+  const [orderedProjects, commitProjects, previewProjects, beginProjectDrag, finishProjectDrag, beginProjectPointer, guardProjectClick, savingProjects] = usePinnedOrder(projects.filter((p) => p.pinned), (ids) => reorder('projects', ids), (e) => setError(e.message));
+  const [orderedPinnedSessions, commitPinnedSessions, previewSessions, beginSessionDrag, finishSessionDrag, beginSessionPointer, guardSessionClick, savingSessions] = usePinnedOrder(projectPage.items.filter((s) => s.pinned), (ids) => reorder('sessions', ids), (e) => setError(e.message));
+  const moveBy = (list, commit, id, delta) => {
+    const ids = list.map((item) => item.id);
+    const from = ids.indexOf(id);
+    commit(moveId(ids, from, from + delta));
+  };
+  const sessionRowBody = (s) => <>
+    <button className="session-target" onPointerDownCapture={beginSessionPointer} onClick={(e) => { if (guardSessionClick(e)) { e.preventDefault(); e.stopPropagation(); return; } go(`/projects/${encodeURIComponent(project.id)}/sessions/${encodeURIComponent(s.id)}`); }}><strong>{s.pinned ? '★ ' : ''}{s.title}</strong>{s.firstQuestion && <span className="session-preview">{short(s.firstQuestion, 96)}</span>}<span className="session-sub">{age(s.lastActivity)} <span>·</span> {s.messageCount} 条消息</span>{s.tags?.length > 0 && <small className="session-dir">{s.tags.join(' · ')}</small>}{project.paths.length > 1 && <small className="session-dir">{s.directory}</small>}</button>
+    {s.pinned && orderedPinnedSessions.length > 1 && <div className="session-order" onPointerDownCapture={stopDrag}><button type="button" onClick={() => moveBy(orderedPinnedSessions, commitPinnedSessions, s.id, -1)} disabled={savingSessions || orderedPinnedSessions[0]?.id === s.id} aria-label="上移会话">↑</button><button type="button" onClick={() => moveBy(orderedPinnedSessions, commitPinnedSessions, s.id, 1)} disabled={savingSessions || orderedPinnedSessions[orderedPinnedSessions.length - 1]?.id === s.id} aria-label="下移会话">↓</button></div>}
+    <button className="session-pin" onPointerDownCapture={stopDrag} onClick={() => meta('sessions', s.id, { pinned: !s.pinned })} title={s.pinned ? '取消置顶' : '置顶会话'} aria-label={s.pinned ? '取消置顶' : '置顶会话'}>{s.pinned ? '★' : '☆'}</button>
+  </>;
   const rename = async (id, title) => {
     if (!title.trim()) return;
     try {
@@ -482,7 +644,7 @@ export default function App() {
       <button className={`nav-link ${section === 'all' ? 'active' : ''}`} onClick={() => go('/all')} title="全部记录" aria-label="全部记录"><Icon name="search" /><span className="nav-text">全部记录</span></button>
       <button className={`nav-link ${section === 'pinned' ? 'active' : ''}`} onClick={() => go('/pinned')} title="已置顶" aria-label="已置顶"><Icon name="pin" /><span className="nav-text">已置顶</span></button>
       <div className="nav-group-label section-gap">最近项目</div>
-      <div className="project-nav">{projects.slice(0, 9).map((p) => <button key={p.id} className={projectId === p.id ? 'current' : ''} onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)} title={p.paths.join('\n')} aria-label={`${projectName(p)}${p.pinned ? '，已置顶' : ''}`}><span className="nav-folder">▤</span><span className="project-nav-name">{projectName(p)}</span>{p.pinned && <span className="project-nav-pin" aria-hidden="true"><Icon name="pin" /></span>}</button>)}</div>
+      <div className="project-nav">{projects.slice(0, 9).map((p) => <motion.button layout={!reduceMotion && 'position'} transition={layoutTransition} key={p.id} className={projectId === p.id ? 'current' : ''} onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)} title={p.paths.join('\n')} aria-label={`${projectName(p)}${p.pinned ? '，已置顶' : ''}`}><span className="nav-folder">▤</span><span className="project-nav-name">{projectName(p)}</span>{p.pinned && <span className="project-nav-pin" aria-hidden="true"><Icon name="pin" /></span>}</motion.button>)}</div>
       <div className="rail-footer"><span className="status-dot" /> 本机档案 <small>只读浏览 · 端口 4570</small></div>
     </nav>
     <div className="workspace">
@@ -505,7 +667,10 @@ export default function App() {
             <div className="sessions-title-row"><span>会话 <small>{projectPage.total}</small></span><select aria-label="会话排序" value={sort} onChange={(e) => setSort(e.target.value)}><option value="recent">最近</option><option value="oldest">最早</option><option value="messages">消息数</option><option value="title">标题</option></select></div>
             <div className="sessions-filters"><input className="session-filter" aria-label="按会话名称筛选" placeholder="筛选会话…" value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)} />{project.paths.length > 1 && <select className="directory-filter" aria-label="按工作路径筛选" title={directoryFilter || '所有工作路径'} value={directoryFilter} onChange={(e) => setDirectoryFilter(e.target.value)}><option value="">所有工作路径</option>{project.paths.map((p) => <option key={p} value={p}>{p}</option>)}</select>}</div>
           </div>
-          <div className="session-scroll">{projectPage.items.map((s) => <div key={s.id} className={`session-item ${s.id === selectedId ? 'selected' : ''}`}><button className="session-target" onClick={() => go(`/projects/${encodeURIComponent(project.id)}/sessions/${encodeURIComponent(s.id)}`)}><strong>{s.pinned ? '★ ' : ''}{s.title}</strong>{s.firstQuestion && <span className="session-preview">{short(s.firstQuestion, 96)}</span>}<span className="session-sub">{age(s.lastActivity)} <span>·</span> {s.messageCount} 条消息</span>{s.tags?.length > 0 && <small className="session-dir">{s.tags.join(' · ')}</small>}{project.paths.length > 1 && <small className="session-dir">{s.directory}</small>}</button><button className="session-pin" onClick={() => meta('sessions', s.id, { pinned: !s.pinned })} title={s.pinned ? '取消置顶' : '置顶会话'} aria-label={s.pinned ? '取消置顶' : '置顶会话'}>{s.pinned ? '★' : '☆'}</button></div>)}</div>
+          <motion.div className="session-scroll" layoutScroll>
+            {orderedPinnedSessions.length > 0 && <Reorder.Group as="div" axis="y" className="session-pinned-group" values={orderedPinnedSessions.map((s) => s.id)} onReorder={previewSessions}>{orderedPinnedSessions.map((s) => <Reorder.Item as="div" key={s.id} value={s.id} drag={savingSessions ? false : 'y'} onDragStart={beginSessionDrag} onDragEnd={finishSessionDrag} layout={!reduceMotion} transition={layoutTransition} whileDrag={dragFeedback} className={`session-item pinned-item ${s.id === selectedId ? 'selected' : ''}`}>{sessionRowBody(s)}</Reorder.Item>)}</Reorder.Group>}
+            {projectPage.items.filter((s) => !s.pinned).map((s) => <div key={s.id} className={`session-item ${s.id === selectedId ? 'selected' : ''}`}>{sessionRowBody(s)}</div>)}
+          </motion.div>
           {projectPage.loading && !projectPage.items.length && <div className="session-empty">正在载入会话…</div>}
           {!projectPage.loading && !projectPage.items.length && <div className="session-empty">没有匹配的会话。</div>}
           {projectPage.hasMore && <button className="session-more" onClick={loadMoreSessions} disabled={projectPage.loading}>{projectPage.loading ? '加载中…' : `加载更多（还有 ${projectPage.total - projectPage.items.length} 段）`}</button>}
@@ -514,7 +679,25 @@ export default function App() {
       </div>}
       {index && section === 'all' && selectedId && selected && <Reader id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go(allHref(q, scope))} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} />}
        {index && section === 'all' && !selectedId && <main className="all-page"><div className="eyebrow">DISCOVERY / 跨项目找回</div><h1>全部记录</h1><p className="lead">不记得在哪个项目？从标题、路径或历史消息中找回线索。</p><div className={`global-search-wrap ${q.trim() && (searching || results?.query !== q || results?.scope !== scope) ? 'is-searching' : ''}`}><Icon name="search" /><input className="global-search" aria-label="搜索全部记录" placeholder="搜索项目、会话或消息正文…" value={query} onChange={(e) => { const next = e.target.value; setQuery(next); setResults(null); setSearching(!!next.trim()); history.replaceState(null, '', allHref(next, scope)); setUrl(current()); }} /><kbd>⌘ K</kbd></div>{q.trim() && <div className="search-scope" role="group" aria-label="搜索范围">{SCOPES.map(([value, label]) => <button key={value} className={scope === value ? 'is-on' : ''} aria-pressed={scope === value} onClick={() => changeScope(value)}>{label}</button>)}</div>}{q.trim() && (searching || results?.query !== q || results?.scope !== scope) && !error && <div className="search-progress" role="status"><span className="search-spinner" aria-hidden="true" />正在检索所有历史消息<span className="search-dots" aria-hidden="true">…</span></div>}{q.trim() && !searching && results?.query === q && results?.scope === scope && <><div className="results-heading" role="status">{results.total} 处匹配{results.truncated ? '（已截断，请缩小范围）' : ''}</div><div className="result-list">{results.results.map((r) => <button key={`${r.sessionId}:${r.messageId || r.matchField}`} onClick={() => go(`/all/sessions/${encodeURIComponent(r.sessionId)}?${new URLSearchParams({ q, scope, ...(r.messageId ? { message: r.messageId } : {}) })}`)}><div className="result-kind"><Highlight text={r.projectName} query={q} /> <span>/ {matchLabel[r.matchField] || '命中'}</span></div><strong><Highlight text={r.title} query={q} /></strong><p><Highlight text={short(r.snippet, 200)} query={q} /></p><time>{age(r.updatedAt)}</time></button>)}</div>{results.hasMore && <div className="search-status">当前仅展示前 {results.results.length} 处，请缩小关键词或范围。</div>}</>}{!q.trim() && <><div className="overview-heading"><h2>路径索引</h2><span>{new Set(sessions.map((s) => s.directory)).size} 个工作路径</span></div><div className="path-index">{projects.map((p) => <div key={p.id}><h3 onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)}>{projectName(p)} <Icon name="chevron" /></h3>{p.paths.map((path) => <div key={path} title={path}>{path}</div>)}</div>)}</div></>}</main>}
-      {index && section === 'pinned' && <main className="all-page"><div className="eyebrow">SHORTLIST / 快速回到重要工作</div><h1>已置顶</h1><div className="overview-heading"><h2>项目</h2></div><div className="pinned-list">{projects.filter((p) => p.pinned).map((p) => <button key={p.id} onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)}>▤　{projectName(p)} <span>{p.sessionCount} 个会话</span></button>)}</div><div className="overview-heading"><h2>会话</h2></div><div className="pinned-list">{sessions.filter((s) => s.pinned).map((s) => <button key={s.id} onClick={() => go(`/projects/${encodeURIComponent(s.projectId)}/sessions/${encodeURIComponent(s.id)}`)}>{s.title}<span>{projectName(projects.find((p) => p.id === s.projectId))}</span></button>)}</div></main>}
+      {index && section === 'pinned' && (() => {
+        const rank = new Map(projects.map((p, i) => [p.id, i]));
+        const pinnedSessions = sessions.filter((s) => s.pinned).sort((a, b) => {
+          const pa = rank.get(a.projectId) ?? 1e9;
+          const pb = rank.get(b.projectId) ?? 1e9;
+          if (pa !== pb) return pa - pb;
+          const ao = Number.isInteger(a.order) ? a.order : Infinity;
+          const bo = Number.isInteger(b.order) ? b.order : Infinity;
+          return ao - bo || (b.lastActivity || '').localeCompare(a.lastActivity || '');
+        });
+        return <main className="all-page"><div className="eyebrow">SHORTLIST / 快速回到重要工作</div><h1>已置顶</h1>
+          <div className="overview-heading"><h2>项目</h2>{orderedProjects.length > 1 && <span className="reorder-hint">用 ↑ ↓ 调整顺序，或直接拖动</span>}</div>
+          <Reorder.Group as="div" axis="y" className="pinned-list pinned-projects" values={orderedProjects.map((p) => p.id)} onReorder={previewProjects}>{orderedProjects.map((p, i) => <Reorder.Item as="div" key={p.id} value={p.id} drag={savingProjects ? false : 'y'} onDragStart={beginProjectDrag} onDragEnd={finishProjectDrag} layout={!reduceMotion} transition={layoutTransition} whileDrag={dragFeedback} className="pinned-row"><button className="pinned-open" onPointerDownCapture={beginProjectPointer} onClick={(e) => { if (guardProjectClick(e)) { e.preventDefault(); e.stopPropagation(); return; } go(`/projects/${encodeURIComponent(p.id)}`); }}>▤　{projectName(p)} <span>{p.sessionCount} 个会话</span></button><div className="reorder-buttons" onPointerDownCapture={stopDrag}><button type="button" onClick={() => moveBy(orderedProjects, commitProjects, p.id, -1)} disabled={savingProjects || i === 0} aria-label="上移项目">↑</button><button type="button" onClick={() => moveBy(orderedProjects, commitProjects, p.id, 1)} disabled={savingProjects || i === orderedProjects.length - 1} aria-label="下移项目">↓</button></div></Reorder.Item>)}</Reorder.Group>
+          {!orderedProjects.length && <div className="reader-empty">还没有置顶的项目。</div>}
+          <div className="overview-heading"><h2>会话</h2></div>
+          <div className="pinned-list">{pinnedSessions.map((s) => <motion.div layout={!reduceMotion && 'position'} transition={layoutTransition} key={s.id} className="pinned-row"><button className="pinned-open" onClick={() => go(`/projects/${encodeURIComponent(s.projectId)}/sessions/${encodeURIComponent(s.id)}`)}>{s.title}<span>{projectName(projects.find((p) => p.id === s.projectId))}</span></button></motion.div>)}</div>
+          {!pinnedSessions.length && <div className="reader-empty">还没有置顶的会话。</div>}
+        </main>;
+      })()}
     </div>
   </div>;
 }
