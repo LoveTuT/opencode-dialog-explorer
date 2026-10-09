@@ -1,6 +1,6 @@
 # opencode Dialog Explorer：项目优先的 UI / 交互重构方案
 
-> 状态：设计与实施规格；项目优先界面及核心阅读/检索能力已初步实现，详见文末「实施进度与差距」。调研日期：2026-10-08。本文仍是后续重构的目标规格；[早期实施规划](./IMPLEMENTATION.md) 保留历史决策与 P0 记录，冲突时以本文为准。
+> 状态：设计与实施规格；项目优先界面及核心阅读/检索能力已实现，详见文末「实施进度与差距」。调研日期：2026-10-08，2026-10-09 更新：提问索引最终形态（紧凑「琴键」+ hover/聚焦预览）、会话内查找（`<mark>` 高亮 + 上/下一处）、会话列表首问摘要与服务端分页、旧 API 收敛（仅保留 `/api/archive/*`）、消息级多命中检索、`around` SQL 定点窗口、目录回退身份（`dir:<hash>` + `identitySource`）已落地。[早期实施规划](./IMPLEMENTATION.md) 保留历史决策与 P0 记录，冲突时以本文为准。
 
 ## 1. 定位与设计哲学
 
@@ -19,9 +19,11 @@
 5. **渐进披露**：默认看标题、活动时间、首段预览及问答；技术过程（工具输出 / reasoning）折叠，仍可展开查看；绝不默默把转录截为 30 条而称「全文」。
 6. **轻量、克制、有辨识度**：用比例、层次、文字与留白，而非模仿品牌 Logo、花哨统计或虚构状态。
 
-## 2. 现状与设计所依据的事实
+## 2. 重构前基线与设计依据（历史）
 
-| 维度 | 当前事实 | 改造原因 |
+> 下表记录 2026-10-08 调研时的**重构前基线**，用于说明改造动机；其中「现状」一列多数已在实施中替换（数据/列表/详情/搜索/管理/刷新均已改造），当前实现见 §10。
+
+| 维度 | 重构前基线 | 改造原因 |
 |---|---|---|
 | 数据 | `server/sources/opencode.js` 只列顶层、非空会话；按 `session.directory` 的最后一段生成 `projectLabel` | 同名目录可能撞名；同一项目可能有不同工作目录 |
 | 列表 | `/api/conversations` 返回全部会话，`src/App.jsx` 单页卡片与项目下拉筛选 | 无项目级首页 / 项目导航 / 可复制的深链接 |
@@ -61,14 +63,14 @@
 
 ```text
 ┌───────────────┬──────────────────────────┬───────────────────────────────────────┬───────────────┐
-│ opencode      │ 项目 / 别名           ⟳ │ 标题 · 操作…                         │ 本会话目录    │
-│ 搜索  Ctrl K  │ N 条会话 · 最近活动       │ 来源路径 / 更新时间                  │ 01 用户提问   │
-│               │ ── 置顶 ──              │───────────────────────────────────────│ 02 用户提问   │
-│ 项目          │ ● 交付审核  3 小时前    │ 用户：问题 / 背景                    │ 03 用户提问   │
-│   置顶项目    │ ★ 模块设计  昨天        │ 助手：结构化内容与代码块            │               │
-│   最近项目    │ ── 最近 ──              │  ▸ 4 次工具调用 · 展开               │ 会话备注      │
-│ 全部记录      │   问题排查  周二        │                                       │ 标签          │
-│ 已置顶        │   文档整理  上周        │ ↓ 更多历史消息 / 跳转目标            │               │
+│ opencode      │ 项目 / 别名           ⟳ │ 标题 · 操作…                         │ 提问索引      │
+│ 搜索  Ctrl K  │ N 条会话 · 最近活动       │ 来源路径 / 更新时间                  │  01           │
+│               │ ── 置顶 ──              │───────────────────────────────────────│  02           │
+│ 项目          │ ● 交付审核  3 小时前    │ 用户：问题 / 背景                    │  03 ← 当前    │
+│   置顶项目    │ ★ 模块设计  昨天        │ 助手：结构化内容与代码块            │  …   （琴键） │
+│   最近项目    │ ── 最近 ──              │  ▸ 4 次工具调用 · 展开               │ 12–14 / 26    │
+│ 全部记录      │   问题排查  周二        │                                       │ 悬停预览提问  │
+│ 已置顶        │   文档整理  上周        │ ↓ 更多历史消息 / 跳转目标            │  收起         │
 │               │ [排序/过滤/目录分组]    │                                       │               │
 └───────────────┴──────────────────────────┴───────────────────────────────────────┴───────────────┘
 ```
@@ -78,22 +80,30 @@
 ### 3.2 三个核心页面
 
 1. **项目总览**：标题「项目」，一排轻量状态（项目数、会话数、最后刷新时间）；项目行显示可区分的名称、工作目录提示、会话数、最近活动、置顶状态；默认仅项目，支持查找项目及打开最近项目。无数据时引导核查 opencode 数据目录，不诱导创建空项目。
-2. **项目页**：顶部项目名 / 别名与来源路径 / 操作（置顶、编辑别名、打开目录）；会话列表用单行或双行紧凑项，标题优先，预览来自首条用户提问（若可得），右侧时间与标签；状态栏支持最近 / 最早 / 标题 / 消息数，置顶分组恒在顶部；选中后同页展示转录。项目跨工作目录时可查看所有路径并按目录过滤。
-3. **全部记录**：全局搜索输入、范围切换「项目 / 会话 / 内容」、筛选项目/标签/时间，匹配结果按相关度或时间排序。零查询仅展示项目路径索引与近期会话小样本；查询结果以「项目 › 会话 › 命中位置」呈现，正文命中可直接跳到稳定消息锚点；深度检索覆盖全部消息而不是片段缓存。
+2. **项目页**：顶部项目名 / 别名与来源路径 / 操作（置顶、编辑别名、打开目录）；会话列表用双行紧凑项，标题优先，其下为**首条用户提问预览**（`firstQuestion`，若无则省略），右侧时间、消息数与标签；状态栏支持最近 / 最早 / 标题 / 消息数，置顶分组恒在顶部；选中后同页展示转录。会话列表由**服务端分页**（`/api/archive/projects/:id/sessions`），默认每页 30、底部「加载更多」追加，列表标题显示过滤后的总数。项目跨工作目录时可查看所有路径并按目录过滤。
+3. **全部记录**：全局搜索输入、范围切换「全部 / 标题与路径 / 正文」，匹配结果按最近活动或相关度排序（后端支持 `sort=recent|relevance`，界面默认最近）。零查询仅展示项目路径索引与近期会话小样本；查询结果以「项目 › 会话 › 命中字段」呈现，同一会话可有多条正文命中，正文命中可直接跳到稳定消息锚点；当前正文检索为带边界的 SQL 扫描（超出置 `truncated`），完整磁盘索引见 §6。
 
 ## 4. 阅读、预览与管理交互
 
 **选择与预览**：点击会话行进入阅读区域，行选中高亮且可用键盘上下切换；无会话选中时显示项目概览 / 引导；列表预览最多两行，敏感正文不在 hover tooltip 大段暴露。切换会话清理上一次加载态、取消未完成请求；首次展示最近一页消息，顶部「加载更早」，阅读区内维持滚动锚点。刷新当前会话重新请求，不能继续使用旧卡片缓存冒充最新内容。
 
-**转录**：按真实消息顺序展示用户 / 助手；用户消息使用低饱和块而非全屏聊天气泡；助手正文提供舒适行宽、段落/列表/行内代码/代码块、复制代码；工具调用与输出在步骤折叠面板中按原始类型展示，长输出默认截屏高并可展开 / 复制（不丢失原始文本）；reasoning 若有则置于可折叠「思考过程」，不得与正式答复混成一段。缺少附件可预览内容时显示「附件记录」而非假装能打开；避免 Markdown 的不可信 HTML 注入。前端支持查找本会话、高亮命中及上/下一处。
+**转录**：按真实消息顺序展示用户 / 助手；用户消息使用低饱和块而非全屏聊天气泡；助手正文提供舒适行宽、段落/列表/行内代码/代码块、复制代码；工具调用与输出在步骤折叠面板中按原始类型展示，长输出默认截屏高并可展开 / 复制（不丢失原始文本）；reasoning 若有则置于可折叠「思考过程」，不得与正式答复混成一段。缺少附件可预览内容时显示「附件记录」而非假装能打开；避免 Markdown 的不可信 HTML 注入。
 
-**提问目录 TOC**：从主库 `message.data.role='user'` 的用户文本提取第一个有意义的预览（最多约 80 字），以 `message.id` 为锚点；无纯文本时使用「附件提问 / 用户提问 #N」。点击目录时若目标尚未加载，先请求包含该锚点的窗口或「定位」接口，再滚动和短暂高亮；不能只调用 scrollIntoView 指向不存在的节点。滚动中突出当前章节，目录和正文各自独立滚动；TOC 可收起。
+**会话内查找**：阅读区工具条提供「查找」，打开后在当前会话**全部消息**内检索（`GET /api/archive/sessions/:id/find?q=`，按阅读顺序返回每条命中消息与其片段），显示「第 n / 总数」并支持上一处 / 下一处（Enter / Shift+Enter 亦可）。命中词在正文中高亮（Markdown 渲染时通过 rehype 包裹 `<mark>`，不改动原始文本），当前命中消息加重点样式。跳到尚未加载的命中时用定点窗口（`around`）加载再定位；查找开启期间临时取消「仅问答」过滤，避免命中消息被隐藏。Esc 关闭查找。
+
+**提问索引（琴键，最终形态）**：右侧是一条紧凑「琴键」式提问索引，不是文字列表。数据取主库 `message.data.role='user'`，以 `message.id` 为锚点，预览为第一条有意义的用户文本（最多约 80 字），无纯文本时用「用户提问 #N」；接口为 `GET /api/archive/sessions/:id/toc`。交互规格：
+
+- 每个提问一个编号按钮（01、02…），键高自适应、尽量一屏多显；索引与正文各自独立滚动。
+- **hover / 聚焦**弹出预览浮层（序号、时间、提问预览）；**触屏首次点按显示预览、再次点按跳转**，浮层内另提供「跳转到提问 →」。
+- 当前阅读位置对应的提问高亮（`aria-current="location"`），滚动时自动将当前键滚入可视区；顶部/底部步进按钮翻页，并有可见范围指示（如 `12–14 / 26`）。
+- 点击/激活时若目标尚未加载，先请求包含该锚点的定点窗口（`GET /api/archive/sessions/:id/around?messageId=`）再滚动并短暂高亮，**不** `scrollIntoView` 到不存在的节点。
+- 键盘可达、Esc 关闭预览、尊重 `prefers-reduced-motion`；阅读区工具条的「收起/打开提问目录」可折叠该索引。
 
 **项目管理（sidecar）**：项目置顶 / 别名 / 备注和会话置顶 / 标签 / 备注；默认不改变 opencode `project` 记录和目录层级，不允许通过网页任意把 session 移入另一项目。「按目录分组」是视图设置，不是迁移数据。项目别名仅改变本应用展示，保留原始项目名与路径的查看入口。会话**改名**若启用，清楚说明写入 opencode `session.title` 并保留原始 `time_updated`；用户可取消编辑。星标迁移从 `ocde.starred` 只做一次、映射 `opencode:ses_…`，冲突时保留服务端已存在置顶值；迁移有完成标记及可重试失败提示，不用裸 localStorage 长期充当事实来源。明确不做删除、归档和跨项目迁移（不同于参考产品）。
 
 **操作和反馈**：标题行省略号菜单集中「置顶、标签、备注、改名、复制恢复命令、复制 session ID」；不可用的目录打开动作需真实错误反馈，目前 `openPath()` 返回 `ok` 仅代表发起打开命令，未来更改文案为「已尝试打开」或改造结果回报，不能承诺已打开。刷新有时间戳与加载态；后台索引尚未完成显示进度或「内容搜索暂不可用」，不能无提示给出遗漏结果。
 
-**检索契约**：项目筛选严格匹配 `project_id`，目录筛选匹配完整 `session.directory`；普通查询按输入词全包含，标题/别名/路径/标签/备注/用户提问/助手正文各字段可过滤，搜索 API 返回 `scope、projectId、sessionId、messageId、snippet、matchField、score、updatedAt` 与分页信息。相关度排序优先精确标题、项目名，其次提问，再次正文；同分再按最近活动及 ID 稳定排序。结果页显示总数或明确「仅当前页 / 估计数」，高亮需保留原文大小写并限制片段长度。查询变更取消旧请求、显示加载 / 失败 / 空结果 / 索引进行中，不能把旧搜索结果当新结果。首版可逐步上线：先保证项目/标题/路径精确检索，再接全量可定位内容索引；未上线时必须明确标为「内容搜索尚未覆盖历史」，不得再叫全文检索。
+**检索契约**：项目筛选严格匹配 `project_id`，目录筛选匹配完整 `session.directory`；普通查询按输入词全包含，标题/别名/路径/标签/备注/用户提问/助手正文各字段可过滤，搜索 API 返回 `scope、projectId、sessionId、messageId、snippet、matchField、score、updatedAt` 与分页信息。相关度排序优先精确标题、项目名，其次提问，再次正文；同分再按最近活动及 ID 稳定排序。结果页显示总数或明确「仅当前页 / 估计数」，高亮需保留原文大小写并限制片段长度。查询变更取消旧请求、显示加载 / 失败 / 空结果 / 截断状态，不能把旧搜索结果当新结果。当前已实现可定位的**消息级内容检索**；在升级到磁盘索引前，超宽查询明确标记为 `truncated`（结果已截断），不得暗示覆盖全部历史。
 
 ## 5. 视觉系统与无障碍规格
 
@@ -110,38 +120,42 @@
 
 长路径单行省略但完整值可复制；中文/英文标题可换行但限制列表高度；超长代码有区域内横向滚动；搜索结果的片段高亮可见且使用语义 `<mark>`。icon 可选 `lucide-react`（仅 npm，图标附文字/aria-label），简单组件首选语义 HTML + CSS，**不为纯文档阶段安装依赖**。菜单 / 弹层如自研无法满足焦点管理和键盘交互，再考虑 npm 的 Radix Primitives；全文虚拟化仅在长会话测试证明必要时选 npm 虚拟化库（需与消息锚点定位兼容）。不引入通用组件库或远程 CDN。尊重 `prefers-reduced-motion`；Tab 可达、Esc 关闭弹层 / 清除输入而不是丢失阅读位置、屏幕阅读器报送结果数与错误；目标是 WCAG 2.2 AA 的键盘和文本对比。键盘快捷键：`/` 聚焦**全局**搜索，`Ctrl/Cmd+K` 打开统一搜索入口，`Esc` 逐层退出当前浮层；仅在非输入控件时生效，避免浏览器 / 系统快捷键冲突。
 
-## 6. 数据模型、接口和性能规划（仅设计）
+## 6. 数据模型、接口和性能规划
 
 先用读取 `project` 表的 `project.id` 作为稳定项目 ID，`session.project_id` 归属；仅在某些 opencode 版本无 `project` 表 / `project_id` 时回退到**完整规范化 directory** 派生的 `dir:<hash>`，并在数据上标记 `identitySource=directory`；不同来源的项目 ID 有前缀，避免碰撞。路径仅做规范化用于等价判断，**不依赖真实文件存在，不解析符号链接、不自动合并**。原始 `session.directory` 保留供过滤和恢复命令使用。会话仍仅显示顶层非空记录；子会话的消息是否计入父会话正文需要调研实际数据后单独决策，不得静默混入。
 
 Sidecar 建议 `data/meta.json`（已在早期规划提出）：版本字段 + `projects`（项目 ID -> pinned / alias / note / order）和 `sessions`（session ID -> pinned / pinOrder / tags / note / order）。同时建立 `data/` 忽略规则；不删除已经消失的记录，保留以防短暂主库不可用 / 工作目录切换，清理由明确维护动作完成。每次字段级更新做校验与原子写入，串行化并发请求以免覆盖；写失败返回错误并恢复乐观 UI。归属主库变化时 sidecar 以稳定 ID 挂靠，显示按新归属；目录回退 ID 变更时提示别名可能未匹配，不静默合并。
 
-建议 API（仅契约草案，仍需按兼容性与性能细化）：
+当前实现 API（命名空间 `/api/archive/*`；读连接只读，改名写连接独立）：
 
 | 方法 | 路径 | 返回重点 |
 |---|---|---|
-| GET | `/api/projects` | `{projects:[{id,name,alias,worktree,paths,sessionCount,lastActivity,pinned,identitySource}], refreshedAt}`，分页/上限可选 |
-| GET | `/api/projects/:id/sessions?cursor=&limit=&sort=&directory=` | 返回项目内顶层会话摘要、稳定游标、`hasMore`；无 project 表的回退 ID 同样支持 |
-| GET | `/api/sessions/:id?cursor=&limit=` | 详情元数据与**按时间倒序**的一页消息，含 `id,role,createdAt,parts[]`，标记 `hasMore / nextCursor`；前端按正序渲染 |
-| GET | `/api/sessions/:id/toc` | 按时间正序的 `{seq,messageId,createdAt,preview}`；不预先拉全量正文 |
-| GET | `/api/sessions/:id/around?messageId=&limit=` | 命中消息前后窗口；TOC 和全局搜索深链通用 |
-| GET | `/api/search?q=&scope=&projectId=&directory=&tag=&from=&to=&sort=&cursor=` | 命中位置、片段、索引状态与分页；全历史可覆盖的目标接口 |
-| GET/PUT | `/api/meta/projects/:id`、`/api/meta/sessions/:id` | sidecar 字段级更新，限制长度与类型 |
-| PATCH | `/api/sessions/:id/title` | 唯一主库写入：`session.title`，明确成功 / 冲突 / 忙碌 |
-| GET | `/api/open?path=` | 沿用但改为非承诺式反馈；未来写入型打开可评估改 POST |
+| GET | `/api/archive/index` | `{projects:[{id,identitySource,name,alias,worktree,paths,sessionCount,lastActivity,pinned}], sessions:[…]}`，从数据库一次聚合；项目身份默认 `project:<project_id>`，无 project 表时回退 `dir:<sha1(规范化目录)>` 并置 `identitySource=directory`。每个会话含首问摘要 `firstQuestion` |
+| GET | `/api/archive/projects/:id/sessions?cursor=&limit=&sort=&directory=&q=` | 项目内会话的**服务端分页**列表（置顶优先，`sort=recent\|oldest\|title\|messages`），支持工作路径与文本过滤；返回 `{sessions,total,hasMore,nextCursor}` |
+| GET | `/api/archive/sessions/:id?cursor=&limit=` | 详情元数据与一页消息（复合 `(time_created,id)` 游标），含 `id,role,createdAt,parts[]` 与 `hasMore / nextCursor`；前端按正序渲染 |
+| GET | `/api/archive/sessions/:id/toc` | 按时间正序的 `{seq,messageId,createdAt,preview}`；不预先拉全量正文 |
+| GET | `/api/archive/sessions/:id/around?messageId=&limit=` | 命中消息**前后定点窗口**（一条 SQL 取回原消息前后各若干条，不再逐页逼近）；TOC 与全局搜索深链通用 |
+| GET | `/api/archive/sessions/:id/find?q=&limit=` | **会话内查找**：按阅读顺序返回每条含关键词的消息 `{seq,messageId,snippet}`（每消息一处），供上/下一处定位 |
+| GET | `/api/archive/search?q=&scope=&sort=&cursor=&limit=&project=` | **消息级多命中**（每会话可多条、带 `messageId` 锚点可定位原文）；`scope=all\|metadata\|content`、`sort=recent\|relevance`、游标分页，返回 `scope,sessionId,projectId,messageId,snippet,matchField,score,updatedAt` 与 `total/hasMore/truncated` |
+| GET/PUT | `/api/archive/meta/projects/:id`、`/api/archive/meta/sessions/:id` | sidecar 字段级更新，限制长度与类型 |
+| PATCH | `/api/archive/sessions/:id/title` | 唯一主库写入：`session.title`，明确成功 / 冲突 / 忙碌 |
+| GET | `/api/open?path=` | 非承诺式反馈；未来写入型打开可评估改 POST |
 
-老的 `/api/conversations`、`/api/conversation`、`/api/search` 先保持可用以支持逐步替换，但不要保留两个同名搜索语义长期混用；明确版本 / 迁移窗口后替换。`/api/projects` 应从数据库一次聚合统计，而不是逐条读取全部会话详情。详情分页采用 `(time_created,id)` 复合游标，避免相同时间戳漏/重；`part` 在该页消息 ID 上批量查询，避免 N+1；保留类型而非 emoji 标记拼接。TOC 按稳定消息 ID 返回；缺少旧 schema 字段应有能力检测 / 降级，而不是通用 catch 后悄悄报「没有数据」。数据库只读访问与改名写连接必须隔离；对外 API 遵循 localhost 限制、限制输入长度、分页大小与 path 验证。
+旧 `/api/conversations`、`/api/conversation`、`/api/search` 连同 `server/search.js`、`server/sources/*` 已移除，唯一的检索语义是 `/api/archive/search`，不再有两个同名搜索语义并存。`/api/archive/index` 从数据库一次聚合统计，而不是逐条读取全部会话详情。详情分页采用 `(time_created,id)` 复合游标，避免相同时间戳漏/重；`part` 在该页消息 ID 上批量查询，避免 N+1；保留类型而非 emoji 标记拼接。TOC 按稳定消息 ID 返回；缺少旧 schema 字段应有能力检测 / 降级，而不是通用 catch 后悄悄报「没有数据」。数据库只读访问与改名写连接必须隔离；对外 API 遵循 localhost 限制、限制输入长度、分页大小与 path 验证。
 
-**全量搜索实现选择**：若当前 389 会话规模可控，也不能让每次请求遍历整个 SQLite 所有消息。优先独立可重建的本地搜索索引 `data/search.db`（SQLite FTS5 或等效）作为应用 sidecar；只读取主库 `message/part`，索引不反写主库。首次构建按批次、后台进度可见；记录 `messageId/sessionId/projectId/role/snippet` 与规范化正文，增量依据消息 ID / 主库更新时间或可靠的变更标记，对更新、删除、改名与目录变化正确重建。确认 opencode FTS5/中文分词能力：基础 unicode tokenizer 的中文子串检索可能不满足需求，中文要做真实用例验证，必要时分词 / n-gram 辅助索引并标明匹配语义。索引异常可删除重建而不影响原始数据库；期间元数据搜索可用、正文搜索明确标记不完整。不要直接拿当前 `search.js` 的前 30 条 / 4000 字符缓存充当全量覆盖。所有索引、meta、缓存路径须 `.gitignore` 且不得打包。
+**全量搜索实现选择**：当前 `/api/archive/search` 采用带边界的 SQL 文本扫描（`instr(lower(json_extract(...)))`，`SEARCH_CAP=1000`，超出时置 `truncated` 提示），不再使用旧的逐会话内存缓存。若规模继续增长，优先独立可重建的本地搜索索引 `data/search.db`（SQLite FTS5 或等效）作为应用 sidecar；只读取主库 `message/part`，索引不反写主库。首次构建按批次、后台进度可见；记录 `messageId/sessionId/projectId/role/snippet` 与规范化正文，增量依据消息 ID / 主库更新时间或可靠的变更标记，对更新、删除、改名与目录变化正确重建。确认 opencode FTS5/中文分词能力：基础 unicode tokenizer 的中文子串检索可能不满足需求，中文要做真实用例验证，必要时分词 / n-gram 辅助索引并标明匹配语义。索引异常可删除重建而不影响原始数据库；期间元数据搜索可用、正文搜索明确标记不完整。旧的 `server/search.js` 片段缓存（前 30 条 / 4000 字符）已删除，不得再以片段缓存充当全量覆盖。所有索引、meta、缓存路径须 `.gitignore` 且不得打包。
 
 ## 7. 前端模块边界与文件落点（实施时）
 
-- `src/App.jsx`：收敛为应用壳、视图路由和全局错误状态，移走卡片实现；`src/index.css` 改为 tokens + 基础排版，各区域独立样式；删去迁移后无用的 `src/sort.css` 规则。
+> 现状提示：前端仍是单文件 `src/App.jsx`（`Navigation` / `ProjectsPage` / `ProjectPage` / `AllRecordsPage` / `SessionList` / `Transcript` / `QuestionKeys` / `SearchDialog` / `MetadataEditor` 等组件均内联其中），**尚未按本节拆分**——属待办的内部重构，不影响功能。
+
+- `src/App.jsx`：最终收敛为应用壳、视图路由和全局错误状态，移走卡片实现；`src/index.css` 改为 tokens + 基础排版，各区域独立样式；删去迁移后无用的 `src/sort.css` 规则。
 - `src/components/Navigation.*`：项目/全部/置顶、项目快捷列表、折叠状态。
 - `src/pages/ProjectsPage.*`、`ProjectPage.*`、`AllRecordsPage.*`：页面级加载与路由数据；`ProjectPage` 自带会话列表与阅读区。
-- `src/components/SessionList.*`、`Transcript.*`、`QuestionToc.*`、`SearchDialog.*`、`MetadataEditor.*`：与 API 形状一一对应，复杂交互独立；组件命名可沿用现有 JSX/CSS 项目风格，不强制 TypeScript。
+- `src/components/SessionList.*`、`Transcript.*`、`QuestionKeys.*`（提问索引「琴键」，最终形态见 §4）、`SearchDialog.*`、`MetadataEditor.*`：与 API 形状一一对应，复杂交互独立；组件命名可沿用现有 JSX/CSS 项目风格，不强制 TypeScript。
 - `src/api/…`：集中 URL 构造、请求取消与错误解析；浏览状态存 URL，纯偏好（导航宽度、折叠状态）可保留 localStorage；不要把星标当客户端唯一事实源。
-- `server/sources/opencode.js` + 新增项目聚合 / 游标详情 / TOC 数据访问；`server/search.js` 迁移为真正全量索引；`server/meta.js` 与 `server/rename.js` 集中写入；`vite.config.js` 注册最小 API 路由（必要时拆出 server/router.js）；`scripts/smoke-test.mjs` 补契约验证。
+- `src/rehypeFindHighlight.js`：会话内查找的 Markdown 高亮，作为 unified **attacher**（以 `[rehypeFindHighlight, term]` 传入 `rehypePlugins`），把命中词包成 `<mark class="find-hit">` 而不改动原始文本。
+- `server/archive.js`：集中 opencode 数据访问（项目聚合与身份回退 / 服务端分页会话列表 / 游标详情 / TOC / 定点窗口 / 会话内查找 / 检索）与 `resumeCommand`；`server/meta.js` 与 `server/rename.js` 集中写入；`vite.config.js` 注册最小 API 路由（必要时拆出 `server/router.js`）；`scripts/smoke-test.mjs`、`scripts/archive-test.mjs`、`scripts/find-highlight-test.mjs` 补契约与回归验证。旧的 `server/sources/*`、`server/search.js` 已删除。
 - `docs/IMPLEMENTATION.md` 保留旧设计；此文档是新阶段的验收基准。
 
 ## 8. 分阶段交付与可验证验收
@@ -162,14 +176,26 @@ Sidecar 建议 `data/meta.json`（已在早期规划提出）：版本字段 + `
 - [OpenAI / ChatGPT Learn：Projects and chats](https://learn.chatgpt.com/docs/projects)（兼容地址：[Codex 项目文档](https://developers.openai.com/codex/projects.md)）：项目/聊天组织、置顶、搜索，以及官方文档中的「多个项目在侧边栏、聊天在主区域」插图说明。**采样来源为官方文档文字及公开示意说明**，不是对已登录桌面客户端像素级截图的测量。
 - [OpenAI / ChatGPT Learn：ChatGPT desktop app](https://learn.chatgpt.com/docs/app)（[Markdown](https://developers.openai.com/codex/app.md)）：跨项目并行工作、从项目或文件夹进入工作。
 - [OpenAI Developers：Codex 概览](https://developers.openai.com/codex/)：公开界面示例显示 Pinned / Projects / Recents 的左导航，可用于信息架构对照。官方产品会持续变动，本文仅抽象设计原则，不声称完全复制当前客户端。
-- 本项目源码：`src/App.jsx`、`src/index.css`、`server/sources/{opencode,_shared,index}.js`、`server/search.js`、`vite.config.js`、`scripts/smoke-test.mjs`；本机 `opencode.db` schema / 匿名统计只读核验（未采集或写入任何私有对话内容到文档）。
+- 本项目源码：`src/App.jsx`、`src/index.css`、`src/theme.css`、`src/rehypeFindHighlight.js`、`server/archive.js`、`server/meta.js`、`server/rename.js`、`server/open.js`、`vite.config.js`、`scripts/smoke-test.mjs`、`scripts/archive-test.mjs`、`scripts/find-highlight-test.mjs`；本机 `opencode.db` schema / 匿名统计只读核验（未采集或写入任何私有对话内容到文档）。
 
 > 本轮没有采集/保存官方产品图片文件，也没有做视觉识别的像素测量；文中的文本框图为**原创结构示意**。若后续需要视觉稿，在可合法获取的官方公开样本基础上单独制作，并通过真实浏览器的桌面/移动端截图验证实现，而不是把示意当成现有产品截图。
 
-## 10. 实施进度与差距（2026-10-08）
+## 10. 实施进度与差距（2026-10-09）
 
-已落地：项目首页与侧栏、项目内会话列表及目录筛选、响应式阅读器、分页加载、提问目录/历史定位、跨项目纯文本检索、项目/会话置顶及别名/备注/标签 sidecar、独立改名接口（唯一写 `session.title`）、只读 Markdown 渲染；原 API 暂保留。新功能在 `server/archive.js`、`server/meta.js`、`server/rename.js` 与 `src/App.jsx`、`src/index.css`。没有页面内提问或生成对话能力。
+**已落地**：项目首页与侧栏、项目内会话列表及目录筛选、响应式阅读器、分页加载、**提问索引（紧凑「琴键」+ hover/聚焦预览 + 触屏二次点按跳转）**、跨项目检索、项目/会话置顶及别名/备注/标签 sidecar、独立改名接口（唯一写 `session.title`）、只读 Markdown 渲染。本阶段（P0/P1/P2）另已完成：
 
-**尚未达到目标规格**：已通过 Browser Harness 检查桌面项目导航、分页、提问目录、全局检索跳转及移动端 390/768/1280/1600px 布局（发现并修复 390px 项目卡片横向溢出，窄屏目录默认改为收起）。尚未完成截图内容审阅、触控实机和屏幕阅读器验收；搜索目前直接在只读主库做全文文本扫描（浏览器中 `fun_mars` 请求由约 27 秒降为约 1.2 秒），尚不是可重建磁盘索引/后台进度，且每会话仅一个命中、上限 100；不支持搜索全部工具/思考内容、结果字段细分、标签/时间/项目组合筛选或命中高亮；会话列表没有首问摘要和服务端分页；`around` 用分页逐次查找而不是 SQL 定点窗口；尚无“本会话内搜索”、已置顶迁移、结构化工具输出虚拟化/大规模性能验收；旧 star localStorage 尚未自动迁入 sidecar。上述事项须在 D4/D5 继续完成，不能据此声称完整符合本方案。
+- **旧 API 收敛**：移除 `/api/conversations`、`/api/conversation`、`/api/search`、`/api/sources` 及 `server/search.js`、`server/sources/*`；唯一检索语义为 `/api/archive/search`，`resumeCommand` 归入 `server/archive.js`。
+- **消息级多命中检索**：`/api/archive/search` 每条命中带 `messageId` 锚点，支持 `scope=all|metadata|content`、`sort=recent|relevance`、游标分页，返回 `snippet/matchField/score/updatedAt` 与 `total/hasMore/truncated`；界面按命中字段（标题 / 项目 / 路径 / 标签 / 备注 / 会话 ID / 正文）标注，关键词高亮，可跳到命中消息。
+- **`around` SQL 定点窗口**：一条 SQL 取回命中消息前后各若干条，替代逐页逼近。
+- **目录回退身份**：无 `project` 表 / `project_id` 时以 `dir:<sha1(规范化目录)>` 作为稳定项目 ID 并暴露 `identitySource`，避免同名目录被静默合并。
+- **会话内查找**：`/api/archive/sessions/:id/find` 返回每条命中消息，阅读区「查找」工具条支持上/下一处、Markdown 内 `<mark>` 高亮与当前命中强调，跳到未加载命中时用 `around` 定位。高亮插件独立为 `src/rehypeFindHighlight.js`（unified attacher，经 `[[rehypeFindHighlight, term]]` 传入 `rehypePlugins`），并有 `scripts/find-highlight-test.mjs` 回归测试防止接线回退。
+- **会话列表首问摘要 + 服务端分页**：会话摘要新增 `firstQuestion`（首条用户提问，供列表预览）；项目页会话列表改用 `/api/archive/projects/:id/sessions` 服务端分页（默认 30/页，「加载更多」追加，服务端执行排序与过滤）。
 
-**视觉迭代**：已用 `src/theme.css` 覆盖早期深色视觉，统一项目卡片、导航、阅读器、目录和检索页的明亮档案样式；当前以白色底面、轻边框和黑灰文字建立层级，少量石板蓝只用于交互重点。未引入远程字体、图片或 CDN，功能与数据契约未因换肤变更。
+**尚未达到目标规格（D4/D5 待办）**：
+
+- 检索仍是带边界的 SQL 文本扫描（`SEARCH_CAP=1000`，超出置 `truncated`），**尚不是可重建的磁盘索引 / 后台进度**；未覆盖工具与思考内容；无按标签 / 时间 / 项目的组合筛选。
+- 结构化工具输出虚拟化 / 大规模性能验收未做；旧 star `localStorage` 未自动迁入 sidecar（当前应用本身不产生 star 数据）。
+- 前端未按 §7 拆分（`src/App.jsx` 仍为单文件）。
+- 无障碍 / 真机验收未完成：已通过 Browser Harness 检查桌面项目导航、分页、提问索引、全局检索跳转及移动端 390/768/1280/1600px 布局（曾修复 390px 项目卡片横向溢出）；尚未完成截图内容审阅、触控实机与屏幕阅读器验收。
+
+**视觉迭代**：`src/theme.css` 统一明亮档案样式（白色底面、轻边框、黑灰文字，少量石板蓝仅用于交互重点）；未引入远程字体、图片或 CDN，功能与数据契约未因换肤变更。

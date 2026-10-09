@@ -15,7 +15,8 @@ and focused on a single source: the local opencode SQLite database.
 
 - **Browse by project.** Projects are grouped by opencode `project_id`, not just
   folder name. Filter projects by name or path; filter and sort sessions within
-  a project, including by working directory when a project has several.
+  a project, including by working directory when a project has several. Each row
+  previews the session's first question, and long lists load in pages.
 - **Read the full history.** Load older messages in pages. Markdown is rendered
   for reading; tool calls and reasoning remain available in collapsible sections.
   Enable **Q&A only** to hide tool calls, reasoning, and intermediate replies,
@@ -24,8 +25,14 @@ and focused on a single source: the local opencode SQLite database.
 - **Jump between questions.** A compact, scrollable question rail previews each
   user question, follows your reading position, and loads earlier history when
   you jump to a question that is not on the current page.
+- **Find within a session.** Open **Find** in the reader to search every message
+  in the open session, highlight matches in the text, and step through hits with
+  previous / next (Enter / Shift+Enter). Jumping to a hit that is not loaded
+  brings it in and scrolls to it.
 - **Search across projects.** Find sessions by title, project name, path, tags,
-  notes, or historical text. A text match can take you directly to its message.
+  notes, or historical text, and switch the scope between everything,
+  titles & paths, and message text. Every text hit keeps its message anchor, so a
+  session can contribute several hits and each jumps straight to its message.
   Press `Ctrl+K` / `⌘K` or `/` to focus search.
 - **Organize your archive.** Pin projects and sessions; add project aliases and
   notes, or session tags and notes. Rename a session when you want its title to
@@ -67,10 +74,11 @@ Run `npm install` once on the OS where you intend to run the server (Node.js 22+
 ```text
 npm run service:start
 npm run service:status
+npm run service:restart   # rebuild and reload the running service
 npm run service:stop
 ```
 
-Start builds the app and launches the preview in the background at `http://127.0.0.1:4570`. Local state and logs are in the Git-ignored `data/service.json` and `data/service.log`. Double-clicking Windows `start.cmd` rebuilds and replaces a running instance managed by this script, then opens the homepage once in the Windows default browser; it will not replace another process occupying port 4570. Repeated `service:start` calls reuse the service. Stop only terminates a verified instance started by this entry point, not `agent:dev` or an unrelated process on port 4570. To serve new code outside the Windows double-click launcher, stop and start again. WSL uses the Linux launcher and reads the WSL OpenCode database; use the Windows launcher for native Windows data. Do not share one `node_modules` between Windows and WSL: packages such as Rollup install platform-specific binaries, so use a separate project copy and install dependencies in each OS.
+Start builds the app and launches the preview in the background at `http://127.0.0.1:4570`. Local state and logs are in the Git-ignored `data/service.json` and `data/service.log`. Double-clicking Windows `start.cmd` rebuilds and replaces a running instance managed by this script, then opens the homepage once in the Windows default browser; it will not replace another process occupying port 4570. Repeated `service:start` calls **reuse** the running service without reloading code or config, so after changing the app run `npm run service:restart` (or stop then start). Stop only terminates a verified instance started by this entry point, not `agent:dev` or an unrelated process on port 4570. WSL uses the Linux launcher and reads the WSL OpenCode database; use the Windows launcher for native Windows data. Do not share one `node_modules` between Windows and WSL: packages such as Rollup install platform-specific binaries, so use a separate project copy and install dependencies in each OS.
 
 ```bash
 npm test                       # smoke and archive checks
@@ -111,13 +119,15 @@ Passing the project directory directly avoids Windows drive-switching issues wit
 ## How it works
 
 - `server/archive.js` reads the project/session index, pages through messages,
-  builds the user-question directory, and searches historical text. Broad
-  content searches may take longer. Search results show at most one match per
-  session and up to 100 sessions in the UI.
+  serves the server-paginated project session list (`firstQuestion` preview
+  included), builds the question index, finds within a session, and searches
+  historical text. Content search is a bounded SQL scan that returns each hit
+  with its message anchor (several hits per session are possible); very broad
+  queries flag the results as truncated.
 - `server/meta.js` writes app-only metadata to `data/meta.json`; `server/rename.js`
   handles the optional write to opencode's session title.
-- `vite.config.js` exposes these local APIs in both dev and preview mode; the
-  legacy conversation/search endpoints remain available for compatibility.
+- `vite.config.js` exposes the local `/api/archive/*` APIs in both dev and preview
+  mode; `/api/archive/search` is the only search endpoint.
 - The installable PWA caches static assets with a network-first service worker;
   navigations and API requests require the local server, so a stopped service
   cannot replay old conversations from offline cache. Refresh an existing tab
