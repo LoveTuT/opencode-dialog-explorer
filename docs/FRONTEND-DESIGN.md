@@ -1,6 +1,6 @@
 # 前端设计与主题 Token
 
-本文记录当前已实现的界面约定，供后续调整页面和组件时参考。实际样式以 `src/index.css` 和 `src/theme.css` 为准：`src/main.jsx` 先引入基础样式 `index.css`，再引入亮色主题 `theme.css`。因此 `index.css` 中仍能看到旧的深色默认值；**当前生效的是 `theme.css` 的亮色覆盖**。这份文档描述现状，不把 `docs/UI-REDESIGN.md` 中尚未实施的建议当作现有功能。
+本文记录当前已实现的界面约定，供后续调整页面和组件时参考。实际样式以 `src/index.css` 和 `src/theme.css` 为准：`src/main.jsx` 先引入基础样式 `index.css`，再引入亮色主题 `theme.css`。因此 `index.css` 中仍能看到旧的深色默认值；**当前生效的是 `theme.css` 的亮色覆盖**。页面结构与交互逻辑见 `docs/CURRENT-LOGIC.md`。
 
 ## 定位与视觉方向
 
@@ -16,8 +16,8 @@
 | 顶栏 `.workspace-bar` | 高 `48px`，白色背景与浅分隔线，负责当前位置与操作。 |
 | 项目总览 `.overview` | 统计、项目网格及路径入口；项目卡片最小高度 `208px`，浅边框、低强度投影、悬停微抬升。 |
 | 项目会话栏 `.session-panel` | 基础宽 `320px`（中等视口变为 `285px`），包含项目资料、会话排序、名称/工作路径筛选与可滚动会话列表；列表由服务端分页（每页 30，「加载更多」追加），每项在标题下显示首条提问预览 `.session-preview`；置顶会话整行可拖，或用 `.session-order` 上/下移按钮调整置顶组内顺序。 |
-| 会话阅读 `.reader` | 白色阅读面，标题、路径、消息和「加载更早」操作；正文容器最大宽 `800px`，与工具栏、会话列表分别滚动。工具条含「查找」，打开后显示 `.find-bar`（输入、`n / 总数`、上一处/下一处、关闭），命中词以 `<mark class="find-hit">` 高亮，当前命中消息 `.is-find-active` 加深。 |
-| 会话信息弹窗 `.dialog-backdrop` / `.dialog-panel` | 由会话属性栏的 `.session-info-trigger`（「编辑会话信息」）触发，经 `createPortal` 挂到 `document.body`；集中编辑标题 / 标签 / 备注。背景用 `backdrop-filter` 虚化，面板为半透明磨砂玻璃并以 `.editor-value` 悬停 chip 提供原地快速编辑；支持 Esc / 点蒙层关闭、锁定背景滚动，`prefers-reduced-motion` 下关闭动画。 |
+| 会话阅读 `.reader` | 白色阅读面，标题、路径、消息和「加载更早」操作；正文容器最大宽 `800px`，与工具栏、会话列表分别滚动。工具条含「查找」，打开后显示 `.find-bar`（输入、`n / 总数`、上一处/下一处、关闭），命中词以 `<mark class="find-hit">` 高亮，当前命中消息 `.is-find-active` 加深。代码块 `.code-block`、工具 `.process-field` 与思考过程均有 `.code-copy` 复制按钮，成功 / 失败都给 toast。 |
+| 会话信息弹窗 `.dialog-backdrop` / `.dialog-panel` | 由会话属性栏的 `.session-info-trigger`（「编辑会话信息」）触发，经 `createPortal` 挂到 `document.body`；集中编辑标题 / 标签 / 备注。背景用 `backdrop-filter` 虚化，面板为半透明磨砂玻璃；支持 Esc / 点蒙层关闭、锁定背景滚动、`prefers-reduced-motion` 下关闭动画。打开时焦点移入标题、Tab 在面板内循环、关闭后焦点归还触发按钮；写入失败时面板保持打开并在 `.dialog-error` 就地报错、保留草稿。标题与项目别名 / 备注的原地快速编辑由独立的 `.editor-value` 悬停 chip 提供。 |
 | 提问导航 `.question-keys` | 靠右的琴键式提问索引，当前项与悬停项有石板蓝反馈，预览浮层用于浏览提问。宽度不足时正文为其预留空间。 |
 | 全部记录 `.all-page` | 项目路径索引、全局搜索、范围切换（全部 / 标题与路径 / 正文）、结果列表与关键词高亮；正文命中按消息锚点展示，同一会话可有多条；搜索加载与截断状态可见。已置顶页的置顶项目整行可拖，并保留 `.reorder-buttons`（↑ / ↓）。 |
 

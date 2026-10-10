@@ -327,6 +327,26 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .process { margin: 5px 0; background: #fafafa; border-color: #e6e6e6; color: #444444; border-radius: 5px; }
 .process summary:hover { background: #f1f1f1; }
 .process pre { border-color: #e6e6e6; color: #343434; }
+.process-field { position: relative; }
+.code-block { position: relative; }
+.code-copy {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 1;
+  padding: 3px 8px;
+  border: 1px solid #d8e0e8;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #5b626a;
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: .55;
+  transition: opacity .15s ease, border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+.code-block:hover .code-copy, .process-field:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
+.code-copy:hover { border-color: #9cacc0; color: var(--accent); }
+.code-copy.copied { background: #292929; border-color: #292929; color: #ffffff; opacity: 1; }
 .attachment { color: #505050; }
 .endnote { color: #656565; border-color: #eeeeee; }
 .inline-error { color: #ad4c38; }
@@ -540,6 +560,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .dialog-btn.primary { border-color: var(--accent); background: var(--accent); color: #ffffff; }
 .dialog-btn.primary:hover { background: #35506b; color: #ffffff; }
 .dialog-btn:disabled { opacity: .55; cursor: default; }
+.dialog-error { margin: 16px 0 0; padding: 8px 11px; border: 1px solid #e6c3bb; border-radius: 8px; background: #fbf1ef; color: #ad4c38; font-size: 12px; }
 @keyframes dialog-veil { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dialog-rise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {

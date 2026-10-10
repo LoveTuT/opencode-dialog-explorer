@@ -80,7 +80,7 @@ opencode '<会话工作目录>' --session <会话 ID>
 - `vite.config.js` 在开发和预览模式中挂载本地 `/api/archive/*` 接口；`/api/archive/search` 是唯一的搜索接口。
 - 可安装 PWA 的 Service Worker 仅对静态资源采用 network-first 缓存；页面导航与 API 必须访问本机服务，服务关闭后不能从离线缓存重现旧对话。已打开的标签页需刷新才能确认服务状态。
 
-背景与设计决策参见 [UI 重构方案](./docs/UI-REDESIGN.md) 和 [早期实施规划](./docs/IMPLEMENTATION.md)。
+当前页面结构、数据流和交互行为参见[现状逻辑梳理](./docs/CURRENT-LOGIC.md)；早期实现决策保留在[早期实施规划](./docs/IMPLEMENTATION.md)，视觉 token 参见[前端设计与主题 Token](./docs/FRONTEND-DESIGN.md)。
 
 ## 许可证
 

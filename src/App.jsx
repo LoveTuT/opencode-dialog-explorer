@@ -135,30 +135,54 @@ function Icon({ name }) {
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{shapes[name]}</svg>;
 }
 
-function Part({ part, findTerm }) {
-  if (part.type === 'tool') return <details className="process"><summary>工具 · {part.name}</summary><pre>{JSON.stringify(part.input ?? {}, null, 2)}</pre>{part.output && <pre>{String(part.output)}</pre>}</details>;
-  if (part.type === 'reasoning') return <details className="process"><summary>思考过程</summary><pre>{part.text}</pre></details>;
+function Part({ part, findTerm, onNotify }) {
+  if (part.type === 'tool') {
+    const input = JSON.stringify(part.input ?? {}, null, 2);
+    const output = part.output ? String(part.output) : '';
+    return <details className="process"><summary>工具 · {part.name}</summary>
+      <div className="process-field"><CopyButton className="code-copy" value={input} label="复制输入" notify="工具输入已复制" onNotify={onNotify} /><pre>{input}</pre></div>
+      {output && <div className="process-field"><CopyButton className="code-copy" value={output} label="复制输出" notify="工具输出已复制" onNotify={onNotify} /><pre>{output}</pre></div>}
+    </details>;
+  }
+  if (part.type === 'reasoning') return <details className="process"><summary>思考过程</summary><div className="process-field"><CopyButton className="code-copy" value={part.text || ''} label="复制" notify="思考过程已复制" onNotify={onNotify} /><pre>{part.text}</pre></div></details>;
   if (part.type === 'file') return <div className="attachment">附件记录 · {part.text}</div>;
-  return <div className="message-text"><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={findTerm ? [[rehypeFindHighlight, findTerm]] : []} skipHtml components={{ a: ({ children, href }) => <a href={/^https?:\/\//.test(href || '') ? href : undefined} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span className="attachment">图片记录 · {alt || '未命名'}</span>, code: ({ children, className }) => <code className={className}>{children}</code> }}>{part.text}</ReactMarkdown></div>;
+  return <div className="message-text"><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={findTerm ? [[rehypeFindHighlight, findTerm]] : []} skipHtml components={{ a: ({ children, href }) => <a href={/^https?:\/\//.test(href || '') ? href : undefined} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span className="attachment">图片记录 · {alt || '未命名'}</span>, pre: ({ children }) => <CodeBlock onNotify={onNotify}>{children}</CodeBlock>, code: ({ children, className }) => <code className={className}>{children}</code> }}>{part.text}</ReactMarkdown></div>;
 }
 
-function CopyButton({ value, label, onNotify, className }) {
+async function copyText(value, onNotify, message) {
+  try {
+    await navigator.clipboard.writeText(value);
+    onNotify?.(message);
+    return true;
+  } catch {
+    onNotify?.('复制失败，请检查剪贴板权限', true);
+    return false;
+  }
+}
+
+function CopyButton({ value, label, onNotify, className, notify }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      onNotify(label === '复制恢复命令' ? '恢复命令已复制' : 'Session ID 已复制');
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-      onNotify('复制失败，请检查剪贴板权限', true);
-    }
+    const done = await copyText(value, onNotify, notify || (label === '复制恢复命令' ? '恢复命令已复制' : 'Session ID 已复制'));
+    setCopied(done);
+    if (done) { clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 2000); }
   };
-  return <button className={`${className || ''}${copied ? ' copied' : ''}`} onClick={copy}>{copied ? '✓ 已复制' : label}</button>;
+  return <button type="button" className={`${className || ''}${copied ? ' copied' : ''}`} onClick={copy} aria-label={label}>{copied ? '✓ 已复制' : label}</button>;
+}
+
+// Fenced code block: keep the rendered Markdown and add a copy affordance that
+// reads the rendered text, so users never have to select it by hand.
+function CodeBlock({ children, onNotify }) {
+  const ref = useRef(null);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const done = await copyText(ref.current?.innerText ?? ref.current?.textContent ?? '', onNotify, '代码已复制');
+    setCopied(done);
+    if (done) setTimeout(() => setCopied(false), 2000);
+  };
+  return <div className="code-block"><button type="button" className={`code-copy${copied ? ' copied' : ''}`} onClick={copy} aria-label="复制代码">{copied ? '✓' : '复制'}</button><pre ref={ref}>{children}</pre></div>;
 }
 
 function ActionHint({ text, children }) {
@@ -272,6 +296,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
   const [findIndex, setFindIndex] = useState(0);
   const [findBusy, setFindBusy] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const infoTriggerRef = useRef(null);
   const scroller = useRef(null);
   const pendingAnchor = useRef(null);
   const pendingTop = useRef(false);
@@ -371,6 +396,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
   }, [findHits, findIndex, findOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const stepFind = (delta) => { if (findHits.length) setFindIndex((i) => (i + delta + findHits.length) % findHits.length); };
   const closeFind = () => { setFindOpen(false); setFindQuery(''); setFindHits([]); setFindIndex(0); };
+  const closeInfo = () => { setInfoOpen(false); infoTriggerRef.current?.focus(); };
 
   const older = async () => {
     if (!detail?.nextCursor || busy) return;
@@ -396,7 +422,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
       <div className="eyebrow">{session ? '会话管理' : '会话工具'}</div>
       {session && <div className="session-property-fields">
         <Editor title="会话标题 · 写入 opencode" value={session.title} onSave={onRename} />
-        <button type="button" className="session-info-trigger" onClick={() => setInfoOpen(true)} aria-haspopup="dialog"><span className="session-info-glyph" aria-hidden="true">✎</span>编辑会话信息</button>
+        <button type="button" ref={infoTriggerRef} className="session-info-trigger" onClick={() => setInfoOpen(true)} aria-haspopup="dialog"><span className="session-info-glyph" aria-hidden="true">✎</span>编辑会话信息</button>
       </div>}
       <div className="session-property-actions">
         <ActionHint text="隐藏思考、工具调用和中间回复，每次提问只显示最后一条有正文的回答"><button type="button" className={`qa-toggle${questionsOnly ? ' is-on' : ''}`} role="switch" aria-checked={questionsOnly} onClick={() => onQuestionsOnlyChange(!questionsOnly)}><span className="qa-toggle-track" aria-hidden="true" />仅问答</button></ActionHint>
@@ -406,7 +432,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
         {session && <ActionHint text="复制当前会话的 Session ID"><CopyButton className="id-copy" value={session.id} label="复制 Session ID ↗" onNotify={onNotify} /></ActionHint>}
       </div>
     </div>
-    {session && infoOpen && createPortal(<SessionInfoDialog title={session.title} tags={session.tags || []} note={session.note} onClose={() => setInfoOpen(false)} onSave={async ({ title, tags, note }) => { if (title && title !== session.title) await onRename(title); await onMeta({ tags, note }); }} />, document.body)}
+    {session && infoOpen && createPortal(<SessionInfoDialog title={session.title} tags={session.tags || []} note={session.note} onClose={closeInfo} onSave={async ({ title, tags, note }) => { const titleChanged = title && title !== session.title; if (titleChanged) { const ok = await onRename(title); if (!ok) throw new Error('标题保存失败，请重试'); } const okMeta = await onMeta({ tags, note }); if (!okMeta) throw new Error(titleChanged ? '标题已保存，但标签或备注保存失败' : '标签或备注保存失败，请重试'); }} />, document.body)}
     {findOpen && <div className="find-bar" role="search">
       <input autoFocus className="find-input" aria-label="在当前会话中查找" placeholder="在当前会话中查找…" value={findQuery} onChange={(e) => setFindQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); } else if (e.key === 'Escape') closeFind(); }} />
       <span className="find-count" aria-live="polite">{findBusy ? '检索中…' : findQuery.trim() ? (findHits.length ? `${findIndex + 1} / ${findHits.length}` : '无匹配') : ''}</span>
@@ -430,7 +456,7 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
         if (questionsFilter && msg.role !== 'user' && !msg.finalAnswer) return null;
         return <section className={`message ${msg.role}${msg.id === activeFindMessageId ? ' is-find-active' : ''}`} id={`message-${msg.id}`} key={msg.id}>
         <div className="message-label">{msg.role === 'user' ? '你' : 'opencode'} <time>{new Date(msg.createdAt).toLocaleString('zh-CN')}</time></div>
-        <div className="message-body">{parts.length ? parts.map((part, index) => <Part key={index} part={part} findTerm={activeFindTerm} />) : <span className="muted">无可显示内容</span>}</div>
+        <div className="message-body">{parts.length ? parts.map((part, index) => <Part key={index} part={part} findTerm={activeFindTerm} onNotify={onNotify} />) : <span className="muted">无可显示内容</span>}</div>
       </section>})}</div>
       <div className="endnote">{detail.jumped ? '已定位到历史消息 · 可返回最新消息' : '会话内容已显示至最新'} · 只读档案</div>
     </article>
@@ -442,8 +468,16 @@ function Reader({ id, jump, onBack, onNotify, session, onRename, onMeta, questio
 function Editor({ title, value, onSave, placeholder = '' }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || '');
+  const [saving, setSaving] = useState(false);
   useEffect(() => { setDraft(value || ''); }, [value]);
-  return <div className="editor"><div className="editor-label">{title}</div>{editing ? <div className="editor-form"><input autoFocus value={draft} maxLength={120} placeholder={placeholder} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { onSave(draft); setEditing(false); } if (e.key === 'Escape') setEditing(false); }} /><button onClick={() => { onSave(draft); setEditing(false); }}>保存</button><button onClick={() => setEditing(false)}>取消</button></div> : <button className="editor-value" onClick={() => setEditing(true)}>{value || placeholder || '点击编辑'} <span>✎</span></button>}</div>;
+  // Keep the field open if the write fails, so the draft is never silently lost.
+  const commit = async () => {
+    if (saving) return;
+    setSaving(true);
+    try { const ok = await onSave(draft); if (ok !== false) setEditing(false); }
+    finally { setSaving(false); }
+  };
+  return <div className="editor"><div className="editor-label">{title}</div>{editing ? <div className="editor-form"><input autoFocus value={draft} maxLength={120} placeholder={placeholder} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }} /><button type="button" onClick={commit} disabled={saving}>{saving ? '…' : '保存'}</button><button type="button" onClick={() => setEditing(false)} disabled={saving}>取消</button></div> : <button type="button" className="editor-value" onClick={() => setEditing(true)}>{value || placeholder || '点击编辑'} <span>✎</span></button>}</div>;
 }
 
 // Secondary dialog for title + tags + note (title also has an inline quick-edit in the bar).
@@ -452,8 +486,19 @@ function SessionInfoDialog({ title, tags, note, onSave, onClose }) {
   const [tagDraft, setTagDraft] = useState((tags || []).join(', '));
   const [noteDraft, setNoteDraft] = useState(note || '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const panelRef = useRef(null);
   useEffect(() => {
-    const onKey = (event) => { if (event.key === 'Escape') onClose(); };
+    const onKey = (event) => {
+      if (event.key === 'Escape') { onClose(); return; }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusable = [...panelRef.current.querySelectorAll('input, textarea, button, [href]')].filter((el) => !el.disabled);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -462,18 +507,21 @@ function SessionInfoDialog({ title, tags, note, onSave, onClose }) {
   const submit = async () => {
     if (saving) return;
     setSaving(true);
+    setError('');
     try {
       await onSave({ title: titleDraft.trim(), tags: tagDraft.split(/[,，]/).map((t) => t.trim()).filter(Boolean), note: noteDraft.trim() });
       onClose();
+    } catch (e) {
+      setError(e?.message || '保存失败，请重试');
     } finally {
       setSaving(false);
     }
   };
   return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="dialog-panel" role="dialog" aria-modal="true" aria-label="编辑会话信息">
+    <div className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="session-info-title" ref={panelRef}>
       <div className="dialog-head">
         <div className="dialog-eyebrow">会话信息</div>
-        <h2>编辑会话信息</h2>
+        <h2 id="session-info-title">编辑会话信息</h2>
         <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭">✕</button>
       </div>
       <label className="dialog-field">
@@ -488,6 +536,7 @@ function SessionInfoDialog({ title, tags, note, onSave, onClose }) {
         <span className="dialog-label">备注</span>
         <textarea value={noteDraft} placeholder="为这段会话留一条备注…" rows={4} maxLength={2000} onChange={(e) => setNoteDraft(e.target.value)} />
       </label>
+      {error && <p className="dialog-error" role="alert">{error}</p>}
       <div className="dialog-foot">
         <button type="button" className="dialog-btn" onClick={onClose} disabled={saving}>取消</button>
         <button type="button" className="dialog-btn primary" onClick={submit} disabled={saving}>{saving ? '保存中…' : '保存'}</button>
@@ -581,7 +630,11 @@ export default function App() {
   };
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' || e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+      if (e.isComposing || e.defaultPrevented) return;
+      const active = document.activeElement;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(active?.tagName) || active?.isContentEditable;
+      const search = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k';
+      if (search || (e.key === '/' && !typing)) {
         e.preventDefault(); go('/all'); setTimeout(() => document.querySelector('.global-search')?.focus(), 0);
       }
     };
@@ -601,9 +654,11 @@ export default function App() {
     try {
       await request(`meta/${kind}/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
       await load();
+      return true;
     } catch (e) {
       if (isSessionPin) setProjectPage((page) => ({ ...page, items: previousPageItems }));
       setError(e.message);
+      return false;
     }
   };
   // Throwing here lets usePinnedOrder roll back its optimistic state.
@@ -628,12 +683,13 @@ export default function App() {
     <button className="session-pin" onPointerDownCapture={stopDrag} onClick={() => meta('sessions', s.id, { pinned: !s.pinned })} title={s.pinned ? '取消置顶' : '置顶会话'} aria-label={s.pinned ? '取消置顶' : '置顶会话'}>{s.pinned ? '★' : '☆'}</button>
   </>;
   const rename = async (id, title) => {
-    if (!title.trim()) return;
+    if (!title.trim()) return false;
     try {
       await request(`sessions/${encodeURIComponent(id)}/title`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
       await load();
       setUrl(current());
-    } catch (e) { setError(e.message); }
+      return true;
+    } catch (e) { setError(e.message); return false; }
   };
   const open = (path) => fetch('/api/open?path=' + encodeURIComponent(path)).then((r) => { if (!r.ok) throw Error('无法打开目录'); }).catch((e) => setError(e.message));
   return <div className="app-shell">
@@ -675,7 +731,7 @@ export default function App() {
           {!projectPage.loading && !projectPage.items.length && <div className="session-empty">没有匹配的会话。</div>}
           {projectPage.hasMore && <button className="session-more" onClick={loadMoreSessions} disabled={projectPage.loading}>{projectPage.loading ? '加载中…' : `加载更多（还有 ${projectPage.total - projectPage.items.length} 段）`}</button>}
         </aside>
-        {selectedId && selected ? <Reader key={`${selected.id}:${selected.title}`} id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go(`/projects/${encodeURIComponent(project.id)}`)} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} /> : <div className="project-placeholder"><div className="placeholder-symbol">⌁</div><div className="eyebrow">PROJECT ARCHIVE</div><h2>把上下文找回来。</h2><p>从左侧选择一段对话，查看提问、回复和操作过程。</p><div>{project.sessionCount} 段会话分布在 {project.paths.length} 个工作路径中</div></div>}
+        {selectedId && selected ? <Reader key={selected.id} id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go(`/projects/${encodeURIComponent(project.id)}`)} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} /> : <div className="project-placeholder"><div className="placeholder-symbol">⌁</div><div className="eyebrow">PROJECT ARCHIVE</div><h2>把上下文找回来。</h2><p>从左侧选择一段对话，查看提问、回复和操作过程。</p><div>{project.sessionCount} 段会话分布在 {project.paths.length} 个工作路径中</div></div>}
       </div>}
       {index && section === 'all' && selectedId && selected && <Reader id={selected.id} jump={jump} session={selected} onRename={(title) => rename(selected.id, title)} onMeta={(patch) => meta('sessions', selected.id, patch)} onBack={() => go(allHref(q, scope))} onNotify={notify} questionsOnly={questionsOnly} onQuestionsOnlyChange={toggleQuestionsOnly} />}
        {index && section === 'all' && !selectedId && <main className="all-page"><div className="eyebrow">DISCOVERY / 跨项目找回</div><h1>全部记录</h1><p className="lead">不记得在哪个项目？从标题、路径或历史消息中找回线索。</p><div className={`global-search-wrap ${q.trim() && (searching || results?.query !== q || results?.scope !== scope) ? 'is-searching' : ''}`}><Icon name="search" /><input className="global-search" aria-label="搜索全部记录" placeholder="搜索项目、会话或消息正文…" value={query} onChange={(e) => { const next = e.target.value; setQuery(next); setResults(null); setSearching(!!next.trim()); history.replaceState(null, '', allHref(next, scope)); setUrl(current()); }} /><kbd>⌘ K</kbd></div>{q.trim() && <div className="search-scope" role="group" aria-label="搜索范围">{SCOPES.map(([value, label]) => <button key={value} className={scope === value ? 'is-on' : ''} aria-pressed={scope === value} onClick={() => changeScope(value)}>{label}</button>)}</div>}{q.trim() && (searching || results?.query !== q || results?.scope !== scope) && !error && <div className="search-progress" role="status"><span className="search-spinner" aria-hidden="true" />正在检索所有历史消息<span className="search-dots" aria-hidden="true">…</span></div>}{q.trim() && !searching && results?.query === q && results?.scope === scope && <><div className="results-heading" role="status">{results.total} 处匹配{results.truncated ? '（已截断，请缩小范围）' : ''}</div><div className="result-list">{results.results.map((r) => <button key={`${r.sessionId}:${r.messageId || r.matchField}`} onClick={() => go(`/all/sessions/${encodeURIComponent(r.sessionId)}?${new URLSearchParams({ q, scope, ...(r.messageId ? { message: r.messageId } : {}) })}`)}><div className="result-kind"><Highlight text={r.projectName} query={q} /> <span>/ {matchLabel[r.matchField] || '命中'}</span></div><strong><Highlight text={r.title} query={q} /></strong><p><Highlight text={short(r.snippet, 200)} query={q} /></p><time>{age(r.updatedAt)}</time></button>)}</div>{results.hasMore && <div className="search-status">当前仅展示前 {results.results.length} 处，请缩小关键词或范围。</div>}</>}{!q.trim() && <><div className="overview-heading"><h2>路径索引</h2><span>{new Set(sessions.map((s) => s.directory)).size} 个工作路径</span></div><div className="path-index">{projects.map((p) => <div key={p.id}><h3 onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)}>{projectName(p)} <Icon name="chevron" /></h3>{p.paths.map((path) => <div key={path} title={path}>{path}</div>)}</div>)}</div></>}</main>}

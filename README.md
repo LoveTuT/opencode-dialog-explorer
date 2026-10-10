@@ -136,8 +136,11 @@ Passing the project directory directly avoids Windows drive-switching issues wit
   cannot replay old conversations from offline cache. Refresh an existing tab
   to check whether the server is still available.
 
-For background and design decisions, see the [UI redesign notes](./docs/UI-REDESIGN.md)
-and [earlier implementation plan](./docs/IMPLEMENTATION.md).
+For the current page structure, data flow, and interaction behavior, see the
+[current logic overview](./docs/CURRENT-LOGIC.md). Historical implementation
+decisions are kept in the [earlier implementation plan](./docs/IMPLEMENTATION.md),
+and current visual tokens are documented in
+[frontend design notes](./docs/FRONTEND-DESIGN.md).
 
 ## License
 
