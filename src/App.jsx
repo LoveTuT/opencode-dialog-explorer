@@ -200,7 +200,7 @@ function ActionHint({ text, children }) {
     hint.style.left = `${left}px`;
     hint.style.setProperty('--arrow-left', `${position.center - left - 5}px`);
   }, [position, text]);
-  return <span className="action-hint" onMouseEnter={(event) => show(event.currentTarget)} onMouseLeave={() => setPosition(null)} onFocus={(event) => show(event.currentTarget)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPosition(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setPosition(null); }} onClick={() => setPosition(null)}>
+  return <span className="action-hint" onPointerEnter={(event) => { if (event.pointerType !== 'touch') show(event.currentTarget); }} onMouseLeave={() => setPosition(null)} onFocus={(event) => show(event.currentTarget)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPosition(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setPosition(null); }} onClick={() => setPosition(null)}>
     {children}
     {position && createPortal(<div ref={hintRef} className="question-key-preview action-hint-preview" style={{ top: position.top, left: 0 }} role="tooltip"><p>{text}</p></div>, document.body)}
   </span>;
@@ -218,6 +218,15 @@ function QuestionKeys({ items, activeId, onLocate }) {
     const resize = () => setHeight(window.innerHeight);
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
+  }, []);
+  // Dismiss a stuck preview when the window loses focus; some browsers replay a
+  // stale hover at the last cursor position on refocus (see onPointerEnter below).
+  useEffect(() => {
+    const clear = () => { if (!touchRef.current) setPreview(null); };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') clear(); };
+    window.addEventListener('blur', clear);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { window.removeEventListener('blur', clear); document.removeEventListener('visibilitychange', onVisibility); };
   }, []);
   const updateRange = () => {
     const scroll = keysRef.current;
@@ -268,7 +277,7 @@ function QuestionKeys({ items, activeId, onLocate }) {
     <div className="question-keys-scroll" ref={keysRef} onScroll={updateRange}>
       {items.map((item) => <button key={item.messageId} data-message-id={item.messageId} type="button" className={`question-key ${activeId === item.messageId ? 'is-current' : ''} ${preview?.messageId === item.messageId ? 'is-previewed' : ''}`}
         aria-label={`第 ${item.seq} 个提问：${item.preview}`} aria-current={activeId === item.messageId ? 'location' : undefined}
-        onMouseEnter={(event) => { if (event.nativeEvent.sourceCapabilities?.firesTouchEvents !== true) { touchRef.current = false; setTouch(false); show(item, event.currentTarget); } }}
+        onPointerEnter={(event) => { if (event.pointerType !== 'touch') { touchRef.current = false; setTouch(false); show(item, event.currentTarget); } }}
         onFocus={(event) => { if (!touchRef.current) show(item, event.currentTarget); }}
         onClick={(event) => { if (event.detail === 0) { go(item); return; } if (touchRef.current) { if (preview?.messageId === item.messageId) go(item); else show(item, event.currentTarget); } else go(item); }}
         onTouchStart={() => { touchRef.current = true; setTouch(true); }}><span>{String(item.seq).padStart(2, '0')}</span></button>)}
