@@ -1,147 +1,100 @@
 # opencode Dialog Explorer
 
-English | [中文](./README.zh-CN.md)
+[English](./README.en.md) | 中文
 
-A local, project-first archive for **opencode** conversations. Find the project
-you worked on, revisit a session, jump to an earlier question, or search across
-your entire history. When you want to continue working, copy the resume command
-and run it in opencode. This is a reader, not a chat client.
+一个以项目为入口的本地 **opencode** 对话档案浏览器：找到做过的项目，重读会话，跳转到历史提问，或跨项目检索完整记录。需要继续工作时，复制恢复命令到终端运行。这里是阅读器，不是聊天客户端。
 
-Built with Vite + React. Forked from
-[daniel-farina/ai-session-manager](https://github.com/daniel-farina/ai-session-manager)
-and focused on a single source: the local opencode SQLite database.
+基于 Vite + React，fork 自 [daniel-farina/ai-session-manager](https://github.com/daniel-farina/ai-session-manager)，专注读取本机的 opencode SQLite 数据库。
 
-## What you can do
+## 能做什么
 
-- **Browse by project.** Projects are grouped by opencode `project_id`, not just
-  folder name. Filter projects by name or path; filter and sort sessions within
-  a project, including by working directory when a project has several. Each row
-  previews the session's first question, and long lists load in pages.
-- **Read the full history.** Load older messages in pages. Markdown is rendered
-  for reading; tool calls and reasoning remain available in collapsible sections.
-  Enable **Q&A only** to hide tool calls, reasoning, and intermediate replies,
-  keeping the last text answer for each question. The setting is remembered in
-  this browser across projects, sessions, and reloads.
-- **Jump between questions.** A compact, scrollable question rail previews each
-  user question, follows your reading position, and loads earlier history when
-  you jump to a question that is not on the current page.
-- **Find within a session.** Open **Find** in the reader to search every message
-  in the open session, highlight matches in the text, and step through hits with
-  previous / next (Enter / Shift+Enter). Jumping to a hit that is not loaded
-  brings it in and scrolls to it.
-- **Search across projects.** Find sessions by title, project name, path, tags,
-  notes, or historical text, and switch the scope between everything,
-  titles & paths, and message text. Every text hit keeps its message anchor, so a
-  session can contribute several hits and each jumps straight to its message.
-  Press `Ctrl+K` / `⌘K` or `/` to focus search.
-- **Organize your archive.** Pin projects and sessions; add project aliases and
-  notes, or session tags and notes. Drag pinned projects (on **Pinned**) or
-  pinned sessions (inside a project), or use ↑ / ↓ for precise keyboard-friendly
-  moves. Rows animate immediately and persist their order to the local sidecar;
-  they never change opencode data. Rename a session when you want
-  its title to change in opencode itself.
-- **Return to your work.** Copy the resume command or session ID, or try to open
-  the project folder in your OS file manager. The layout adapts to narrow screens
-  and can be installed as a PWA.
+- **按项目浏览**：依据 opencode 的 `project_id` 归类，而非仅凭目录名。可按名称或路径查找项目，并在项目内按标题、工作路径筛选会话，或按时间、标题、消息数排序。每个会话行预览其首条提问，长列表分页加载。
+- **阅读完整历史**：逐页加载更早的消息，以 Markdown 展示正文；工具调用和思考过程可折叠查看。开启「仅问答」后，隐藏工具调用、思考过程和中间回复，每次提问只保留最后一条有正文的回答；本地浏览器会记住该设置，在所有项目和会话中复用。
+- **会话内查找**：在阅读区打开「查找」，搜索当前会话的全部消息，在正文中高亮命中，并用上一处 / 下一处（Enter / Shift+Enter）逐条跳转；命中消息尚未加载时会先加载再定位。
+- **按提问定位**：紧凑的提问轨道可滚动、可预览，会跟随当前阅读位置；点击未加载的历史提问时会加载并定位原文。
+- **跨项目搜索**：检索会话标题、项目名称、路径、标签、备注及历史文本，并可在「全部 / 标题与路径 / 正文」之间切换范围。每条正文命中都带消息锚点，同一会话可有多条命中，且都能直接跳到对应消息。用 `Ctrl+K` / `⌘K` 或 `/` 聚焦搜索。
+- **整理档案**：置顶项目与会话，为项目添加别名和备注，为会话添加标签和备注；置顶项目可在「已置顶」页、置顶会话可在项目内整行拖动，或用 ↑ / ↓ 精确调整先后。列表即时衔接动画，顺序只存本地 sidecar，不改动 opencode 数据；需要修改 opencode 中的标题时可直接重命名会话。
+- **回到工作现场**：复制恢复命令或 Session ID，或尝试在系统文件管理器中打开项目目录。界面适配窄屏，也支持作为 PWA 安装。
 
-## Get started
+## 开始使用
 
-Requires **Node.js 22+** (for the built-in `node:sqlite`) and an existing
-OpenCode SQLite database. The server resolves its location using OpenCode's
-data-directory convention:
+需要 **Node.js 22+**（内置 `node:sqlite`）和本机的 OpenCode SQLite 数据库。服务按照 OpenCode 的数据目录规则定位：
 
-| Platform | Default database path |
-|----------|-----------------------|
+| 平台 | 默认数据库路径 |
+|------|----------------|
 | Linux / macOS | `~/.local/share/opencode/opencode.db` |
 | Windows | `%USERPROFILE%\.local\share\opencode\opencode.db` |
 
-If `XDG_DATA_HOME` is set to an absolute path, the database is read from
-`$XDG_DATA_HOME/opencode/opencode.db` instead. The server reads the database
-belonging to the OS/environment where **Node runs**: running this app in WSL
-does not automatically read a separate Windows OpenCode installation.
+如果 `XDG_DATA_HOME` 是绝对路径，则改为读取 `$XDG_DATA_HOME/opencode/opencode.db`。读取的是 **Node 进程所在系统** 的数据库：在 WSL 中运行本应用，不会自动读取另一个 Windows OpenCode 安装的数据。
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:4570`. If the database does not exist or has no nonempty
-top-level sessions, the archive is empty. Only sessions with `parent_id IS NULL`
-and at least one message appear in the index. An `ExperimentalWarning` from
-`node:sqlite` on Node 22 is expected.
+打开 `http://localhost:4570`。数据库不存在或没有非空顶层会话时，档案列表为空；索引仅展示 `parent_id IS NULL` 且至少有一条消息的会话。Node 22 下 `node:sqlite` 的 `ExperimentalWarning` 属正常现象。
 
-### Background service (built preview)
+### 后台开关（构建版）
 
-Run `npm install` once on the OS where you intend to run the server (Node.js 22+). On Windows, double-click `service/start.cmd` and `service/stop.cmd`; their windows stay open to show the result. On macOS, Linux, or WSL, run `sh service/start.sh` and `sh service/stop.sh` in a terminal. The same commands work everywhere through npm:
+先在**准备运行服务的系统**执行一次 `npm install`（Node.js 22+）。Windows 可直接双击 `service/start.cmd` 启动、`service/stop.cmd` 停止，窗口会保留运行结果；macOS / Linux / WSL 在终端运行 `sh service/start.sh` 和 `sh service/stop.sh`。也可在所有平台使用：
 
 ```text
 npm run service:start
 npm run service:status
-npm run service:restart   # rebuild and reload the running service
+npm run service:restart   # 重新构建并重载服务
 npm run service:stop
 ```
 
-Start builds the app and launches the preview in the background at `http://127.0.0.1:4570`. Local state and logs are in the Git-ignored `data/service.json` and `data/service.log`. Double-clicking Windows `start.cmd` rebuilds and replaces a running instance managed by this script, then opens the homepage once in the Windows default browser; it will not replace another process occupying port 4570. Repeated `service:start` calls **reuse** the running service without reloading code or config, so after changing the app run `npm run service:restart` (or stop then start). Stop only terminates a verified instance started by this entry point, not `agent:dev` or an unrelated process on port 4570. WSL uses the Linux launcher and reads the WSL OpenCode database; use the Windows launcher for native Windows data. Do not share one `node_modules` between Windows and WSL: packages such as Rollup install platform-specific binaries, so use a separate project copy and install dependencies in each OS.
+启动入口自动构建并在后台运行预览版，地址为 `http://127.0.0.1:4570`；状态及日志存于已忽略的 `data/service.json`、`data/service.log`。Windows 双击 `start.cmd` 时，若本脚本管理的服务已运行，会先构建再重启覆盖，成功后始终用 Windows 默认浏览器打开主页；端口被其他进程占用时不会误停或覆盖。通用 `service:start` 重复执行仍复用已运行的服务（**不会**重载代码或配置）。停止只针对由此入口启动的服务，不影响 `agent:dev` 或其他占用 4570 端口的程序。修改代码后请执行 `npm run service:restart`（或先停止再启动）以更新构建版。WSL 中使用 Linux 入口，读取 WSL 的 OpenCode 数据；要读取 Windows 原生数据请在 Windows 侧启动。**不要在 Windows 和 WSL 共用同一个 `node_modules`**：Rollup 等包有平台专用的原生依赖，应在各自的项目副本中分别安装。
 
 ```bash
-npm test                       # smoke and archive checks
+npm test                       # 冒烟与档案测试
 npm run build
-npm run preview               # serve the built app with its local API
+npm run preview               # 运行带本地 API 的构建版
 ```
 
-The API is Vite middleware in both development and preview mode. The built
-frontend does not contain your conversations; preview still reads the database
-on the machine running the server. Keep the server on localhost: it serves
-private transcripts and is not intended for network access.
+开发和预览模式都由 Vite 中间件提供 API。构建产物不包含你的会话；预览模式仍读取运行服务的那台机器上的数据库。服务应只在 localhost 使用，因为接口会返回私有对话历史。
 
-## Where data goes
+## 数据存放位置
 
-| Data | Location | Behavior |
-|------|----------|----------|
-| Conversations, projects, and message content | OpenCode data directory (see platform paths above) | Read-only except session renaming |
-| Pins, ordering, aliases, tags, and notes | `data/meta.json` | Local sidecar; Git-ignored |
-| Session title | opencode's `session.title` | Updated only when you rename a session; `time_updated` is preserved |
+| 数据 | 位置 | 行为 |
+|------|------|------|
+| 对话、项目与消息正文 | OpenCode 数据目录（见上方各平台路径） | 除会话改名外只读 |
+| 置顶、排序、别名、标签、备注 | `data/meta.json` | 本应用的本地 sidecar，已被 Git 忽略 |
+| 会话标题 | opencode 的 `session.title` | 仅在重命名时写入，不修改 `time_updated` |
 
-The app has no telemetry or external CDN; the UI requests data from its local
-server. Session IDs and folder paths are validated before use. Folder opening
-uses the OS opener without a shell (`open` on macOS, `xdg-open` on Linux,
-`explorer` on Windows, and a PowerShell helper on WSL that opens Explorer with
-a converted path and attempts to focus its window). Windows may still deny
-foreground activation. An “open
-folder” response means the command was attempted, not that the file manager
-necessarily displayed the folder.
+应用没有遥测或外部 CDN；页面只向本机服务请求数据。使用前会校验会话 ID 和目录路径。打开目录通过不经过 shell 的系统命令执行：macOS 用 `open`，Linux 用 `xdg-open`，Windows 用 `explorer`；WSL 用 PowerShell 辅助脚本打开 Windows 资源管理器并尝试将对应窗口置于前台。是否成功抢到焦点仍受 Windows 限制。「打开目录」返回成功表示已尝试执行，不保证文件管理器一定显示该目录。
 
-To resume a session, run the copied command in the same environment where the session lives. On Windows the generated command targets PowerShell (not CMD); macOS, Linux, and WSL use a POSIX shell:
+要继续某段会话，在终端执行复制的命令。应用按运行环境生成命令；Windows 使用 PowerShell（不是 CMD），macOS、Linux 和 WSL 使用 POSIX shell。请在存有该会话的同一环境中运行：
 
 ```sh
-opencode '<session working directory>' --session <session-id>
+opencode '<会话工作目录>' --session <会话 ID>
 ```
 
-Passing the project directory directly avoids Windows drive-switching issues with `cd`. The original directory must still exist; native Windows paths cannot be used directly in WSL (or vice versa).
+目录作为 OpenCode 的项目参数传入，不依赖 `cd` 切换盘符。若原目录已被移动或删除，需要先恢复该目录；Windows 原生会话的路径不能直接在 WSL 中使用（反之亦然）。
 
-## How it works
+## 工作原理
 
-- `server/archive.js` reads the project/session index, pages through messages,
-  serves the server-paginated project session list (`firstQuestion` preview
-  included), builds the question index, finds within a session, and searches
-  historical text. Content search is a bounded SQL scan that returns each hit
-  with its message anchor (several hits per session are possible); very broad
-  queries flag the results as truncated.
-- `server/meta.js` writes app-only metadata to `data/meta.json`; `server/rename.js`
-  handles the optional write to opencode's session title.
-- `vite.config.js` exposes the local `/api/archive/*` APIs in both dev and preview
-  mode; `/api/archive/search` is the only search endpoint.
-- The installable PWA caches static assets with a network-first service worker;
-  navigations and API requests require the local server, so a stopped service
-  cannot replay old conversations from offline cache. Refresh an existing tab
-  to check whether the server is still available.
+- `server/archive.js` 读取项目和会话索引、分页返回消息、提供按项目分页的会话列表（含首问摘要 `firstQuestion`）、生成提问索引、执行会话内查找并检索历史文本。正文检索是带边界的 SQL 扫描，每条命中都带消息锚点（同一会话可有多条命中）；范围过宽的查询会标记结果已截断。
+- `server/meta.js` 将本应用的整理信息写入 `data/meta.json`；`server/rename.js` 负责可选的 opencode 会话标题写入。
+- `vite.config.js` 在开发和预览模式中挂载本地 `/api/archive/*` 接口；`/api/archive/search` 是唯一的搜索接口。
+- 可安装 PWA 的 Service Worker 仅对静态资源采用 network-first 缓存；页面导航与 API 必须访问本机服务，服务关闭后不能从离线缓存重现旧对话。已打开的标签页需刷新才能确认服务状态。
 
-For the current page structure, data flow, and interaction behavior, see the
-[current logic overview](./docs/CURRENT-LOGIC.md). Historical implementation
-decisions are kept in the [earlier implementation plan](./docs/IMPLEMENTATION.md),
-and current visual tokens are documented in
-[frontend design notes](./docs/FRONTEND-DESIGN.md).
+当前页面结构、数据流和交互行为参见[现状逻辑梳理](./docs/CURRENT-LOGIC.md)；早期实现决策保留在[早期实施规划](./docs/IMPLEMENTATION.md)，视觉 token 参见[前端设计与主题 Token](./docs/FRONTEND-DESIGN.md)。
 
-## License
+## 项目自带 Skill（`skills/`）
+
+仓库在 [`skills/`](./skills/) 目录预置了一个 **Agent 技能包**，搭配本项目使用：它由项目预先提供，帮助 AI Agent 快速了解项目、解决部署与运行中的常见麻烦，并指导 Agent 快速上手 `ocde` CLI 与 `/api/agent/*` 等取数能力。接入时，把 `skills/opencode-dialog-explorer/` 放入 opencode 的全局 skills 目录（macOS/Linux/WSL：`~/.config/opencode/skills/`；Windows：`%USERPROFILE%\.config\opencode\skills\`），或直接让 Agent 读取其中的 `SKILL.md`。详见 [skills/README.md](./skills/README.md)。
+
+## 给 AI Agent 的接口
+
+同一套归档核心还提供一个只读的机器接口，返回紧凑 JSON 并带回人工界面的深链：
+
+- CLI `ocde`（用 `npm run agent -- <命令>`，或 `npm link` 装为全局命令）：`path`、`projects`、`recent`、`search`、`show`、`toc`、`find`、`resume`。默认直读数据库，加 `--http` 改走正在运行的服务。
+- 同服务下的本地 HTTP `/api/agent/*`（默认 `http://127.0.0.1:4570`）。
+
+它补齐了 opencode 自身的缺口：官方 server/CLI 没有跨会话全文检索、没有聚合视图、也没有 token 友好的紧凑转录。完整契约与示例见 [Agent 接口文档](./docs/AGENT-API.md)；面向 Agent 的部署与上手说明见 [项目自带 Skill](./skills/)。
+
+## 许可证
 
 [MIT](LICENSE)

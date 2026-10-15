@@ -10,6 +10,9 @@
     "url": "git+https://github.com/LoveTuT/opencode-dialog-explorer.git"
   },
   "type": "module",
+  "bin": {
+    "ocde": "./bin/ocde.mjs"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -30,7 +33,8 @@
     "service:restart": "node service/service.mjs restart",
     "service:stop": "node service/service.mjs stop",
     "service:status": "node service/service.mjs status",
-    "test": "node scripts/opencode-path-test.mjs && node scripts/resume-test.mjs && node scripts/find-highlight-test.mjs && node scripts/reorder-test.mjs && node scripts/smoke-test.mjs && node scripts/archive-test.mjs",
+    "test": "node scripts/opencode-path-test.mjs && node scripts/resume-test.mjs && node scripts/find-highlight-test.mjs && node scripts/reorder-test.mjs && node scripts/smoke-test.mjs && node scripts/archive-test.mjs && node scripts/agent-test.mjs",
+    "agent": "node bin/ocde.mjs",
     "agent:dev": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" start --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
     "agent:stop": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" stop --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",
     "agent:restart": "node \"$HOME/.config/opencode/skills/project-runtime-manager/scripts/project-runtime.js\" restart --project-id opencode-dialog-explorer-e8bc1b40 --profile dev",

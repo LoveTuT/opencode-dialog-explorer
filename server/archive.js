@@ -326,6 +326,54 @@ export function aroundMessage(id, messageId, { limit = 100 } = {}) {
   };
 }
 
+// Reverse a `dir:<hash>` identity to its directory by checking the distinct
+// working directories (a small set), so agent callers can filter by project id.
+function directoryForIdentity(d, projectId) {
+  if (!projectId.startsWith('dir:')) return null;
+  const dirs = d.prepare('SELECT DISTINCT directory FROM session WHERE parent_id IS NULL').all();
+  for (const { directory } of dirs) {
+    if (directoryIdentity(directory) === projectId) return directory;
+  }
+  return null;
+}
+
+// Cheap single-session metadata without loading the transcript. Used by the
+// agent interface for resume commands and headers.
+export function sessionMeta(id) {
+  valid(id);
+  const d = db();
+  if (!d) throw new Error('database unavailable');
+  const row = d.prepare(`SELECT s.id, s.project_id, s.title, s.directory, s.time_updated,
+    (SELECT count(*) FROM message WHERE session_id=s.id) AS message_count
+    FROM session s WHERE s.id=? AND s.parent_id IS NULL`).get(id);
+  if (!row) throw new Error('session not found');
+  return sessionRow(row, readMeta(), new Map());
+}
+
+// Cheap newest-first session listing: the session table only, no first-question
+// scan. Supports an archive project id (`project:`/`dir:`) or an exact directory.
+export function recentSessions({ project = '', directory = '', limit = 20 } = {}) {
+  const d = db();
+  if (!d) return [];
+  const size = Math.min(200, Math.max(1, Number(limit) || 20));
+  let projectFilter = '';
+  let dirFilter = String(directory || '');
+  if (project) {
+    if (project.startsWith('project:')) projectFilter = project.slice(8);
+    else if (project.startsWith('dir:')) { dirFilter = directoryForIdentity(d, project); if (dirFilter == null) return []; }
+    else projectFilter = project;
+  }
+  const clauses = ['s.parent_id IS NULL', 'EXISTS (SELECT 1 FROM message WHERE session_id=s.id)'];
+  const params = [];
+  if (projectFilter) { clauses.push('s.project_id = ?'); params.push(projectFilter); }
+  if (dirFilter) { clauses.push('s.directory = ?'); params.push(dirFilter); }
+  const rows = d.prepare(`SELECT s.id, s.project_id, s.title, s.directory, s.time_updated,
+    (SELECT count(*) FROM message WHERE session_id=s.id) AS message_count
+    FROM session s WHERE ${clauses.join(' AND ')}
+    ORDER BY s.time_updated DESC, s.id DESC LIMIT ?`).all(...params, size);
+  return rows.map((row) => sessionRow(row, readMeta(), new Map()));
+}
+
 const METADATA_FIELDS = [
   ['title', 100], ['project', 80], ['path', 50], ['tags', 40], ['note', 40], ['id', 30],
 ];

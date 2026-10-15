@@ -51,6 +51,10 @@ React（src/App.jsx）
         ├─ 阅读器与提问索引
         ├─ 全局搜索与会话内查找
         └─ 管理弹窗、复制操作、错误反馈和焦点管理
+
+Agent（ocde CLI / /api/agent/*）
+        │
+        └─ server/agent.js → 复用 archive.js（只读，紧凑 JSON + deepLink）
 ```
 
 项目优先使用 `project.id` 作为稳定身份；缺少项目表或 `project_id` 时回退到规范化目录的 `dir:<sha1>` 身份，并暴露 `identitySource`。会话保留真实 `session.directory`，目录筛选按完整路径匹配，不按最后一段名称合并。
@@ -124,3 +128,13 @@ React（src/App.jsx）
 - 归档数据访问集中在 `server/archive.js`，sidecar 管理位于 `server/meta.js`，会话标题写入位于 `server/rename.js`。
 - 搜索、分页、提问索引、定点窗口、复制操作、会话信息编辑和响应式布局均按当前页面逻辑工作。
 - 视觉 token 与主题约定见 [`FRONTEND-DESIGN.md`](./FRONTEND-DESIGN.md)；早期设计背景与历史决策见 [`IMPLEMENTATION.md`](./IMPLEMENTATION.md)。
+
+## 9. 机器适配器（Agent 接口）
+
+在人工界面之外，另有一套面向 AI Agent 的**只读**适配器，复用同一数据层：
+
+- `server/agent.js`：把 `archive.js` 的只读能力整理成紧凑、稳定的 JSON（`schemaVersion: 1`），并附带回到人工界面的 deepLink。
+- `bin/ocde.mjs`：CLI（`path` / `projects` / `recent` / `search` / `show` / `toc` / `find` / `resume`），默认直读数据库，`--http` 走运行中的服务。
+- `vite.config.js` 的 `/api/agent/*`：同服务的 HTTP 端点，供 `curl` 等客户端调用。
+
+边界：只读、仅本机、无鉴权；会话 id 与参数有校验和上限。它补齐 opencode 自身缺失的跨会话全文检索、聚合视图和 token 友好的紧凑转录。完整契约见 [`AGENT-API.md`](./AGENT-API.md)。

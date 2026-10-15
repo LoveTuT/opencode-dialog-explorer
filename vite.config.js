@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { openPath } from './server/open.js';
 import { archiveIndex, projectSessions, sessionMessages, questionToc, aroundMessage, findInSession, archiveSearch } from './server/archive.js';
+import { agentHealth, agentProjects, agentRecent, agentSearch, agentShow, agentToc, agentFind, agentSessionMeta } from './server/agent.js';
 import { updateMeta, updateOrder } from './server/meta.js';
 import { renameSession } from './server/rename.js';
 
@@ -79,6 +80,37 @@ async function apiMiddleware(req, res, next) {
     try { json(200, openPath(p)); }
     catch (e) { json(400, { error: String(e) }); }
     return;
+  }
+
+  // Machine-facing, read-only adapter for AI agents. Compact JSON with deep
+  // links back into the UI; no auth because it is localhost-only by design.
+  if (url.pathname.startsWith('/api/agent/')) {
+    const truthy = (v) => v === '1' || v === 'true' || v === 'yes';
+    const q = url.searchParams;
+    try {
+      if (url.pathname === '/api/agent/health' && req.method === 'GET') return json(200, agentHealth());
+      if (url.pathname === '/api/agent/projects' && req.method === 'GET') return json(200, agentProjects({ limit: q.get('limit') }));
+      if (url.pathname === '/api/agent/recent' && req.method === 'GET') return json(200, agentRecent({
+        project: q.get('project') || '', dir: q.get('dir') || '', limit: q.get('limit'),
+        withQuestion: truthy(q.get('withQuestion') || q.get('with_question')),
+      }));
+      if (url.pathname === '/api/agent/search' && req.method === 'GET') return json(200, agentSearch({
+        q: q.get('q'), scope: q.get('scope') || 'all', project: q.get('project') || '',
+        sort: q.get('sort') || 'recent', limit: q.get('limit'),
+      }));
+      if (route[2] === 'sessions' && route[3] && req.method === 'GET') {
+        const id = decodeURIComponent(route[3]);
+        if (route[4] === 'toc') return json(200, agentToc(id));
+        if (route[4] === 'find') return json(200, agentFind(id, q.get('q')));
+        if (route[4] === 'meta') return json(200, agentSessionMeta(id));
+        if (!route[4]) return json(200, agentShow({
+          id, limit: q.get('limit'), maxChars: q.get('maxChars'), cursor: q.get('cursor') || '', full: truthy(q.get('full')),
+        }));
+      }
+      return json(404, { error: 'not found' });
+    } catch (e) {
+      return json(e.message.includes('not found') ? 404 : 400, { error: e.message });
+    }
   }
 
   next();
