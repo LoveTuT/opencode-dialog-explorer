@@ -11,17 +11,27 @@ Built with Vite + React. Forked from
 [daniel-farina/ai-session-manager](https://github.com/daniel-farina/ai-session-manager)
 and focused on a single source: the local opencode SQLite database.
 
+![opencode Dialog Explorer: a session archive that runs locally, read-only, with no telemetry](./docs/assets/cover.png)
+
 ## What you can do
 
 - **Browse by project.** Projects are grouped by opencode `project_id`, not just
   folder name. Filter projects by name or path; filter and sort sessions within
   a project, including by working directory when a project has several. Each row
   previews the session's first question, and long lists load in pages.
+
+  ![Projects: grouped by opencode project_id, each card shows session count, paths, and last activity](./docs/assets/projects.png)
+
+  ![Sessions in a project: filter and sort by title and working directory, with the first question previewed on each row](./docs/assets/project.png)
+
 - **Read the full history.** Load older messages in pages. Markdown is rendered
   for reading; tool calls and reasoning remain available in collapsible sections.
   Enable **Q&A only** to hide tool calls, reasoning, and intermediate replies,
   keeping the last text answer for each question. The setting is remembered in
   this browser across projects, sessions, and reloads.
+
+  ![Reader: navigation and session list on the left, rendered Markdown in the center, and a question rail on the right; tool calls and reasoning are collapsible](./docs/assets/reader.png)
+
 - **Jump between questions.** A compact, scrollable question rail previews each
   user question, follows your reading position, and loads earlier history when
   you jump to a question that is not on the current page.
@@ -34,12 +44,20 @@ and focused on a single source: the local opencode SQLite database.
   titles & paths, and message text. Every text hit keeps its message anchor, so a
   session can contribute several hits and each jumps straight to its message.
   Press `Ctrl+K` / `⌘K` or `/` to focus search.
+
+  ![All records: a cross-project index that groups every session by working path](./docs/assets/discovery.png)
+
+  ![Cross-project search: scope by everything, titles & paths, or message text; text hits are highlighted and tagged with their project and time](./docs/assets/search.png)
+
 - **Organize your archive.** Pin projects and sessions; add project aliases and
   notes, or session tags and notes. Drag pinned projects (on **Pinned**) or
   pinned sessions (inside a project), or use ↑ / ↓ for precise keyboard-friendly
   moves. Rows animate immediately and persist their order to the local sidecar;
   they never change opencode data. Rename a session when you want
   its title to change in opencode itself.
+
+  ![Pinned: pinned projects and sessions in one place, reorderable by drag or with ↑ / ↓](./docs/assets/pinned.png)
+
 - **Return to your work.** Copy the resume command or session ID, or try to open
   the project folder in your OS file manager. The layout adapts to narrow screens
   and can be installed as a PWA.
