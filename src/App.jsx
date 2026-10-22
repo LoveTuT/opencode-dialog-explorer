@@ -554,6 +554,84 @@ function SessionInfoDialog({ title, tags, note, onSave, onClose }) {
   </div>;
 }
 
+// Right-click action menu for a session row. Data-driven so more actions can be
+// added later; positioned at the cursor and clamped to the viewport.
+function SessionContextMenu({ x, y, items, label, onClose }) {
+  const ref = useRef(null);
+  const [position, setPosition] = useState({ top: y, left: x });
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(x, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - rect.height - 8)),
+    });
+    node.querySelector('[role="menuitem"]')?.focus();
+  }, [x, y]);
+  useEffect(() => {
+    const items_ = () => [...(ref.current?.querySelectorAll('[role="menuitem"]') || [])];
+    const onDown = (event) => { if (!ref.current?.contains(event.target)) onClose(); };
+    const onKey = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key === 'Tab') { onClose(); return; }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const nodes = items_();
+      if (!nodes.length) return;
+      event.preventDefault();
+      const at = nodes.indexOf(document.activeElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? nodes.length - 1
+        : event.key === 'ArrowDown' ? (at + 1 + nodes.length) % nodes.length
+          : (at - 1 + nodes.length) % nodes.length;
+      nodes[next].focus();
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onClose, true);
+    window.addEventListener('resize', onClose);
+    window.addEventListener('blur', onClose);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onClose, true);
+      window.removeEventListener('resize', onClose);
+      window.removeEventListener('blur', onClose);
+    };
+  }, [onClose]);
+  return createPortal(<div ref={ref} className="context-menu" role="menu" aria-label={label} style={{ top: position.top, left: position.left }}>
+    {items.map((item) => <button key={item.id} type="button" role="menuitem" className={`context-menu-item${item.danger ? ' is-danger' : ''}`} onClick={() => { onClose(); item.run(); }}>{item.label}</button>)}
+  </div>, document.body);
+}
+
+// Generic confirmation for destructive actions. `onConfirm` may throw to keep
+// the dialog open (e.g. a failed delete); closing is the caller's job on success.
+function ConfirmDialog({ title, message, confirmLabel = '确认', danger, onConfirm, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = previous; };
+  }, [onClose, busy]);
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await onConfirm(); } catch { /* keep open; caller surfaces the error */ } finally { setBusy(false); }
+  };
+  return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <div className="dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc" ref={ref}>
+      <div className="dialog-head"><div className="dialog-eyebrow">请确认</div><h2 id="confirm-title">{title}</h2></div>
+      <p id="confirm-desc" className="dialog-message">{message}</p>
+      <div className="dialog-foot">
+        <button type="button" className="dialog-btn" onClick={onClose} disabled={busy}>取消</button>
+        <button type="button" className={`dialog-btn ${danger ? 'danger' : 'primary'}`} onClick={submit} disabled={busy} autoFocus>{busy ? '处理中…' : confirmLabel}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 export default function App() {
   const [url, setUrl] = useState(current);
   const [index, setIndex] = useState(null);
@@ -570,6 +648,8 @@ export default function App() {
   const [questionsOnly, setQuestionsOnly] = useState(() => localStorage.getItem('ocde.questionsOnly') === 'true');
   const [toast, setToast] = useState(null);
   const [projectPage, setProjectPage] = useState({ id: '', items: [], total: 0, cursor: 0, hasMore: false, loading: false });
+  const [sessionMenu, setSessionMenu] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const toastTimer = useRef(null);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
   const notify = (message, failed = false) => {
@@ -584,6 +664,7 @@ export default function App() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const pop = () => setUrl(current()); window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop); }, []);
+  useEffect(() => { setSessionMenu(null); }, [url]);
   const go = (path) => { history.pushState(null, '', path); setUrl(current()); setDrawer(false); window.scrollTo(0, 0); };
   const toggleRail = () => {
     const next = !railCollapsed;
@@ -700,6 +781,36 @@ export default function App() {
       return true;
     } catch (e) { setError(e.message); return false; }
   };
+  // Open the row action menu at the cursor; fall back to the row rect when the
+  // context menu was triggered from the keyboard (clientX/Y are 0).
+  const openSessionMenu = (event, session) => {
+    event.preventDefault();
+    if (!session) return;
+    const rect = event.currentTarget?.getBoundingClientRect?.();
+    setSessionMenu({
+      x: event.clientX || (rect ? rect.left + 12 : 24),
+      y: event.clientY || (rect ? rect.top + 12 : 24),
+      session,
+    });
+  };
+  // Real deletion: delegate to opencode's own CLI (keeps its event log and
+  // projection consistent), then drop our sidecar metadata and refresh.
+  const deleteSession = async () => {
+    const session = deleteTarget;
+    if (!session) return;
+    try {
+      await request(`sessions/${encodeURIComponent(session.id)}`, { method: 'DELETE' });
+    } catch (e) {
+      notify(e.message, true);
+      throw e;
+    }
+    setDeleteTarget(null);
+    await load();
+    setProjectPage((page) => ({ ...page, items: page.items.filter((s) => s.id !== session.id), total: Math.max(0, page.total - 1) }));
+    notify('会话已删除');
+  };
+  const closeSessionMenu = useCallback(() => setSessionMenu(null), []);
+  const closeDeleteDialog = useCallback(() => setDeleteTarget(null), []);
   const open = (path) => fetch('/api/open?path=' + encodeURIComponent(path)).then((r) => { if (!r.ok) throw Error('无法打开目录'); }).catch((e) => setError(e.message));
   return <div className="app-shell">
     <nav className={`rail ${railCollapsed ? 'collapsed' : 'expanded'} ${drawer ? 'show' : ''}`} aria-label="主导航">
@@ -710,10 +821,16 @@ export default function App() {
       <button className={`nav-link ${section === 'pinned' ? 'active' : ''}`} onClick={() => go('/pinned')} title="已置顶" aria-label="已置顶"><Icon name="pin" /><span className="nav-text">已置顶</span></button>
       <div className="nav-group-label section-gap">最近项目</div>
       <div className="project-nav">{projects.slice(0, 9).map((p) => <motion.button layout={!reduceMotion && 'position'} transition={layoutTransition} key={p.id} className={projectId === p.id ? 'current' : ''} onClick={() => go(`/projects/${encodeURIComponent(p.id)}`)} title={p.paths.join('\n')} aria-label={`${projectName(p)}${p.pinned ? '，已置顶' : ''}`}><span className="nav-folder">▤</span><span className="project-nav-name">{projectName(p)}</span>{p.pinned && <span className="project-nav-pin" aria-hidden="true"><Icon name="pin" /></span>}</motion.button>)}</div>
-      <div className="rail-footer"><span className="status-dot" /> 本机档案 <small>只读浏览 · 端口 4570</small></div>
+      <div className="rail-footer"><span className="status-dot" /> 本机档案 <small>端口 4570 · 删除会写入 opencode</small></div>
     </nav>
     <div className="workspace">
       {toast && <div className={`copy-toast${toast.failed ? ' failed' : ''}`} role="status">{toast.failed ? '!' : '✓'} {toast.message}</div>}
+      {sessionMenu && <SessionContextMenu x={sessionMenu.x} y={sessionMenu.y} label="会话操作" items={[
+        { id: 'delete', label: '删除会话', danger: true, run: () => setDeleteTarget(sessionMenu.session) },
+      ]} onClose={closeSessionMenu} />}
+      {deleteTarget && <ConfirmDialog title="删除会话？" danger confirmLabel="永久删除"
+        message={`“${deleteTarget.title}” 将从 opencode 主库中永久删除（含其子会话），此操作不可撤销。`}
+        onConfirm={deleteSession} onClose={closeDeleteDialog} />}
       <div className="workspace-bar"><button className="icon-button mobile-menu" onClick={() => setDrawer(!drawer)} aria-label="打开导航">☰</button><span className="breadcrumb">档案 <span>/</span> {section === 'all' ? '全部记录' : section === 'pinned' ? '已置顶' : project ? projectName(project) : '项目'}</span><div className="workspace-actions"><span className="desktop-hint">本地 · {sessions.length} 个会话</span><button className="icon-button" onClick={load} disabled={refreshing} title="手动刷新" aria-label="手动刷新"><Icon name="refresh" /></button></div></div>
       {error && <div className="notice" role="alert">{error}<button onClick={() => setError('')}>关闭</button></div>}
       {!index && !error && <div className="loading">正在整理本地档案…</div>}
@@ -733,8 +850,8 @@ export default function App() {
             <div className="sessions-filters"><input className="session-filter" aria-label="按会话名称筛选" placeholder="筛选会话…" value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)} />{project.paths.length > 1 && <select className="directory-filter" aria-label="按工作路径筛选" title={directoryFilter || '所有工作路径'} value={directoryFilter} onChange={(e) => setDirectoryFilter(e.target.value)}><option value="">所有工作路径</option>{project.paths.map((p) => <option key={p} value={p}>{p}</option>)}</select>}</div>
           </div>
           <motion.div className="session-scroll" layoutScroll>
-            {orderedPinnedSessions.length > 0 && <Reorder.Group as="div" axis="y" className="session-pinned-group" values={orderedPinnedSessions.map((s) => s.id)} onReorder={previewSessions}>{orderedPinnedSessions.map((s) => <Reorder.Item as="div" key={s.id} value={s.id} drag={savingSessions ? false : 'y'} onDragStart={beginSessionDrag} onDragEnd={finishSessionDrag} layout={!reduceMotion} transition={layoutTransition} whileDrag={dragFeedback} className={`session-item pinned-item ${s.id === selectedId ? 'selected' : ''}`}>{sessionRowBody(s)}</Reorder.Item>)}</Reorder.Group>}
-            {projectPage.items.filter((s) => !s.pinned).map((s) => <div key={s.id} className={`session-item ${s.id === selectedId ? 'selected' : ''}`}>{sessionRowBody(s)}</div>)}
+            {orderedPinnedSessions.length > 0 && <Reorder.Group as="div" axis="y" className="session-pinned-group" values={orderedPinnedSessions.map((s) => s.id)} onReorder={previewSessions}>{orderedPinnedSessions.map((s) => <Reorder.Item as="div" key={s.id} value={s.id} drag={savingSessions ? false : 'y'} onDragStart={beginSessionDrag} onDragEnd={finishSessionDrag} layout={!reduceMotion} transition={layoutTransition} whileDrag={dragFeedback} className={`session-item pinned-item ${s.id === selectedId ? 'selected' : ''}`} onContextMenu={(e) => openSessionMenu(e, s)}>{sessionRowBody(s)}</Reorder.Item>)}</Reorder.Group>}
+            {projectPage.items.filter((s) => !s.pinned).map((s) => <div key={s.id} className={`session-item ${s.id === selectedId ? 'selected' : ''}`} onContextMenu={(e) => openSessionMenu(e, s)}>{sessionRowBody(s)}</div>)}
           </motion.div>
           {projectPage.loading && !projectPage.items.length && <div className="session-empty">正在载入会话…</div>}
           {!projectPage.loading && !projectPage.items.length && <div className="session-empty">没有匹配的会话。</div>}

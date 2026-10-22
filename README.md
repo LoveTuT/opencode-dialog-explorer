@@ -6,7 +6,7 @@
 
 基于 Vite + React，fork 自 [daniel-farina/ai-session-manager](https://github.com/daniel-farina/ai-session-manager)，专注读取本机的 opencode SQLite 数据库。
 
-![opencode Dialog Explorer：会话档案馆，本地运行 · 只读 · 无遥测](./docs/assets/cover.png)
+![opencode Dialog Explorer：会话档案馆，本地运行 · 本机数据 · 无遥测](./docs/assets/cover.png)
 
 ## 能做什么
 
@@ -31,6 +31,8 @@
 - **整理档案**：置顶项目与会话，为项目添加别名和备注，为会话添加标签和备注；置顶项目可在「已置顶」页、置顶会话可在项目内整行拖动，或用 ↑ / ↓ 精确调整先后。列表即时衔接动画，顺序只存本地 sidecar，不改动 opencode 数据；需要修改 opencode 中的标题时可直接重命名会话。
 
   ![已置顶：汇总置顶项目与会话，可在置顶组内拖动或用 ↑ / ↓ 调整顺序](./docs/assets/pinned.png)
+
+- **删除会话**：在项目页的会话行上单击右键，选择「删除会话」并确认后，会通过 opencode 自身的删除流程把该会话从其主库中永久移除（含子会话），本应用随后清理它的置顶、标签和备注。删除会调用 `opencode session delete`，因此需要本机可执行 `opencode`（可用 `OCDE_OPENCODE_BIN` 指定路径）；此操作不可撤销，请在确认后再执行。
 
 - **回到工作现场**：复制恢复命令或 Session ID，或尝试在系统文件管理器中打开项目目录。界面适配窄屏，也支持作为 PWA 安装。
 
@@ -77,7 +79,7 @@ npm run preview               # 运行带本地 API 的构建版
 
 | 数据 | 位置 | 行为 |
 |------|------|------|
-| 对话、项目与消息正文 | OpenCode 数据目录（见上方各平台路径） | 除会话改名外只读 |
+| 对话、项目与消息正文 | OpenCode 数据目录（见上方各平台路径） | 除会话改名与删除外只读 |
 | 置顶、排序、别名、标签、备注 | `data/meta.json` | 本应用的本地 sidecar，已被 Git 忽略 |
 | 会话标题 | opencode 的 `session.title` | 仅在重命名时写入，不修改 `time_updated` |
 

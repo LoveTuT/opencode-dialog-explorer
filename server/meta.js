@@ -55,6 +55,20 @@ export function updateMeta(kind, id, patch) {
   });
 }
 
+// Drop a sidecar entry (its pin, tags, note and order) after its session or
+// project no longer exists. Missing keys are not an error.
+export function removeMeta(kind, id) {
+  if (!FIELDS[kind] || typeof id !== 'string' || !id || id.length > 300) throw new Error('invalid metadata target');
+  return enqueue(() => {
+    const data = readMeta();
+    if (data[kind][id] !== undefined) {
+      delete data[kind][id];
+      writeMeta(data);
+    }
+    return { kind, id, removed: true };
+  });
+}
+
 // Reorder items by assigning order = index. Only the given ids are touched;
 // items not listed keep their existing order. Display-only (sidecar), never
 // written back to the opencode database.

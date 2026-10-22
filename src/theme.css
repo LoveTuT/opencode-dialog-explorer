@@ -561,10 +561,42 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .dialog-btn.primary:hover { background: #35506b; color: #ffffff; }
 .dialog-btn:disabled { opacity: .55; cursor: default; }
 .dialog-error { margin: 16px 0 0; padding: 8px 11px; border: 1px solid #e6c3bb; border-radius: 8px; background: #fbf1ef; color: #ad4c38; font-size: 12px; }
+.dialog-message { margin: 14px 0 0; color: #5a5a5a; font-size: 13px; line-height: 1.65; }
+.dialog-btn.danger { border-color: #b0473a; background: #b0473a; color: #ffffff; }
+.dialog-btn.danger:hover { background: #983a2e; color: #ffffff; }
+
+/* Right-click session action menu (portal, cursor-anchored). */
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 18px 44px rgba(20, 28, 40, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  animation: dialog-rise .12s ease;
+}
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #363636;
+  font-size: 13px;
+  text-align: left;
+}
+.context-menu-item:hover, .context-menu-item:focus-visible { background: var(--accent-soft); color: var(--accent); outline: none; }
+.context-menu-item.is-danger { color: #b0473a; }
+.context-menu-item.is-danger:hover, .context-menu-item.is-danger:focus-visible { background: #fbf1ef; color: #983a2e; }
 @keyframes dialog-veil { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dialog-rise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .dialog-backdrop, .dialog-panel { animation: none; }
+  .dialog-backdrop, .dialog-panel, .context-menu { animation: none; }
 }
 .session-property-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex: none; margin-left: auto; }
 .session-property-actions button { flex: none; padding: 5px 7px; border: 1px solid #dcdcdc; border-radius: 4px; background: #fff; color: #424242; font-size: 11px; white-space: nowrap; }

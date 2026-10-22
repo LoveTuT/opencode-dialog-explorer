@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react';
 import { openPath } from './server/open.js';
 import { archiveIndex, projectSessions, sessionMessages, questionToc, aroundMessage, findInSession, archiveSearch } from './server/archive.js';
 import { agentHealth, agentProjects, agentRecent, agentSearch, agentShow, agentToc, agentFind, agentSessionMeta } from './server/agent.js';
-import { updateMeta, updateOrder } from './server/meta.js';
+import { updateMeta, updateOrder, removeMeta } from './server/meta.js';
 import { renameSession } from './server/rename.js';
+import { removeSession } from './server/session-remove.js';
 
 // API that reads local transcripts from the OpenCode SQLite database and serves
 // the project-first archive. Registered on BOTH the dev server and the preview
@@ -44,6 +45,15 @@ async function apiMiddleware(req, res, next) {
           directory: url.searchParams.get('directory') || '',
           q: url.searchParams.get('q') || '',
         }));
+      }
+      // Destructive: permanently removes the session from the opencode store via
+      // its own CLI (keeps the event log and projection consistent), then drops
+      // our sidecar metadata for it. The agent namespace stays read-only.
+      if (route[2] === 'sessions' && route[3] && !route[4] && req.method === 'DELETE') {
+        const id = decodeURIComponent(route[3]);
+        const result = await removeSession(id);
+        await removeMeta('sessions', id);
+        return json(200, result);
       }
       if (route[2] === 'sessions' && route[3] && req.method === 'GET') {
         const id = decodeURIComponent(route[3]);

@@ -13,7 +13,7 @@
 5. 复制恢复命令、Session ID、代码块、工具输入/输出或 reasoning。
 6. 通过 sidecar 保存置顶、排序、别名、标签和备注；会话标题单独写入 OpenCode 主库。
 
-应用不创建会话，不提供聊天输入框，不做云同步，不删除或跨项目迁移 OpenCode 数据。
+应用不创建会话，不提供聊天输入框，不做云同步，不跨项目迁移 OpenCode 数据；唯一的破坏性操作是删除会话，且必须经由 opencode 自身的删除流程（见第 6、10 节）。
 
 ## 2. 页面与导航
 
@@ -108,6 +108,7 @@ Agent（ocde CLI / /api/agent/*）
 | GET/PUT | `/api/archive/meta/projects/:id`、`/api/archive/meta/sessions/:id` | sidecar 字段更新 |
 | POST | `/api/archive/meta/order` | 批量保存置顶项顺序 |
 | PATCH | `/api/archive/sessions/:id/title` | 写入会话标题 |
+| DELETE | `/api/archive/sessions/:id` | 永久删除会话（经 opencode 原生流程）并清理 sidecar |
 | GET | `/api/open?path=` | 发起本地目录打开命令 |
 
 旧的 `/api/conversations`、`/api/conversation`、`/api/search` 以及旧搜索模块已移除。正文搜索使用带边界的 SQL 扫描，`SEARCH_CAP=1000`；超出上限时返回 `truncated`，当前没有独立磁盘全文索引或 FTS5。
@@ -138,3 +139,11 @@ Agent（ocde CLI / /api/agent/*）
 - `vite.config.js` 的 `/api/agent/*`：同服务的 HTTP 端点，供 `curl` 等客户端调用。
 
 边界：只读、仅本机、无鉴权；会话 id 与参数有校验和上限。它补齐 opencode 自身缺失的跨会话全文检索、聚合视图和 token 友好的紧凑转录。完整契约见 [`AGENT-API.md`](./AGENT-API.md)。
+
+## 10. 会话删除
+
+- 入口：项目页的会话行单击右键 → 自定义操作菜单（`SessionContextMenu`，`role="menu"`，支持方向键 / Esc / 外部点击 / 滚动关闭）→「删除会话」→ 确认框（`ConfirmDialog`，不可撤销提示）。
+- 执行：`DELETE /api/archive/sessions/:id` → `server/session-remove.js` 校验会话 id 后运行 `opencode session delete <id>`。之所以委托给 opencode 而非直接写库：opencode 的数据是事件溯源（`event` / `event_sequence` 事件日志 + `session` / `message` / `part` 投影），绕过它直删会被投影重建还原；opencode 原生删除会发出 `session.deleted` 事件并级联移除子会话。
+- 失败反馈：id 非法返回 400；`opencode` 报告会话不存在映射为 404；其余错误原样返回。确认框在失败时保持打开，错误以 toast 呈现。
+- 后续清理：删除成功后调用 `meta.removeMeta('sessions', id)` 移除 sidecar 中的置顶/标签/备注/order，并刷新索引与项目会话列表。
+- 依赖：运行环境需能执行 `opencode`（同机同用户、同一数据库路径）；可用 `OCDE_OPENCODE_BIN` 覆盖可执行文件路径。`/api/agent/*` 不提供删除，保持只读。
