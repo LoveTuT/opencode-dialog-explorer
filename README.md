@@ -56,7 +56,7 @@ npm run dev
 
 ### 后台开关（构建版）
 
-先在**准备运行服务的系统**执行一次 `npm install`（Node.js 22+）。Windows 可直接双击 `service/start.cmd` 启动、`service/stop.cmd` 停止，窗口会保留运行结果；macOS / Linux / WSL 在终端运行 `sh service/start.sh` 和 `sh service/stop.sh`。也可在所有平台使用：
+需要 **Node.js 22+**。Windows 直接双击 `service/start.cmd` 即可：脚本会检查 Node.js/npm、自动执行 `npm install`、构建并启动服务；`service/stop.cmd` 停止，窗口会保留运行结果。macOS / Linux / WSL 请先在终端执行一次 `npm install`，再运行 `sh service/start.sh` 和 `sh service/stop.sh`。也可在所有平台使用：
 
 ```text
 npm run service:start
@@ -85,11 +85,13 @@ npm run preview               # 运行带本地 API 的构建版
 
 应用没有遥测或外部 CDN；页面只向本机服务请求数据。使用前会校验会话 ID 和目录路径。打开目录通过不经过 shell 的系统命令执行：macOS 用 `open`，Linux 用 `xdg-open`，Windows 用 `explorer`；WSL 用 PowerShell 辅助脚本打开 Windows 资源管理器并尝试将对应窗口置于前台。是否成功抢到焦点仍受 Windows 限制。「打开目录」返回成功表示已尝试执行，不保证文件管理器一定显示该目录。
 
-要继续某段会话，在终端执行复制的命令。应用按运行环境生成命令；Windows 使用 PowerShell（不是 CMD），macOS、Linux 和 WSL 使用 POSIX shell。请在存有该会话的同一环境中运行：
+要继续某段会话，在终端执行复制的命令。应用按运行环境生成命令；Windows 生成双引号包裹的目录路径，CMD 与 PowerShell 均可直接运行，macOS、Linux 和 WSL 使用 POSIX shell。请在存有该会话的同一环境中运行：
 
 ```sh
 opencode '<会话工作目录>' --session <会话 ID>
 ```
+
+若 Windows 路径含 `%`、`!`、`$` 等会被 shell 特殊解释的字符，可能仍需按所用 shell 的规则手动调整引号或转义。
 
 目录作为 OpenCode 的项目参数传入，不依赖 `cd` 切换盘符。若原目录已被移动或删除，需要先恢复该目录；Windows 原生会话的路径不能直接在 WSL 中使用（反之亦然）。
 

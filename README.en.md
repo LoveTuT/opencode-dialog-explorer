@@ -90,7 +90,7 @@ and at least one message appear in the index. An `ExperimentalWarning` from
 
 ### Background service (built preview)
 
-Run `npm install` once on the OS where you intend to run the server (Node.js 22+). On Windows, double-click `service/start.cmd` and `service/stop.cmd`; their windows stay open to show the result. On macOS, Linux, or WSL, run `sh service/start.sh` and `sh service/stop.sh` in a terminal. The same commands work everywhere through npm:
+Requires **Node.js 22+**. On Windows, just double-click `service/start.cmd`: it checks for Node.js/npm, runs `npm install`, builds, and starts the service; `service/stop.cmd` stops it, and their windows stay open to show the result. On macOS, Linux, or WSL, run `npm install` once, then `sh service/start.sh` and `sh service/stop.sh` in a terminal. The same commands work everywhere through npm:
 
 ```text
 npm run service:start
@@ -129,11 +129,13 @@ foreground activation. An “open
 folder” response means the command was attempted, not that the file manager
 necessarily displayed the folder.
 
-To resume a session, run the copied command in the same environment where the session lives. On Windows the generated command targets PowerShell (not CMD); macOS, Linux, and WSL use a POSIX shell:
+To resume a session, run the copied command in the same environment where the session lives. On Windows the generated command wraps the directory in double quotes and runs in both CMD and PowerShell; macOS, Linux, and WSL use a POSIX shell:
 
 ```sh
 opencode '<session working directory>' --session <session-id>
 ```
+
+If a Windows path contains characters such as `%`, `!`, or `$` that the shell interprets specially, you may still need to adjust quoting or escaping for that shell.
 
 Passing the project directory directly avoids Windows drive-switching issues with `cd`. The original directory must still exist; native Windows paths cannot be used directly in WSL (or vice versa).
 

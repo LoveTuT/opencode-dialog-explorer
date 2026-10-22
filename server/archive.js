@@ -27,9 +27,10 @@ function parse(data) {
 function iso(value) { return value ? new Date(Number(value)).toISOString() : null; }
 
 // Pass the project directory directly to OpenCode so Windows need not switch drives with `cd`.
+// Windows paths cannot contain a double quote, so double quotes are safe and work in both CMD and PowerShell.
 export function resumeCommand(cwd, id, platform = process.platform) {
   if (!cwd) return `opencode --session ${id}`;
-  if (platform === 'win32') return `opencode '${cwd.replaceAll("'", "''")}' --session ${id}`;
+  if (platform === 'win32') return `opencode "${cwd}" --session ${id}`;
   return `opencode '${cwd.replaceAll("'", "'\\''")}' --session ${id}`;
 }
 
@@ -62,7 +63,7 @@ function sessionRow(row, metadata, questions) {
     lastActivity: iso(row.time_updated), messageCount: row.message_count,
     firstQuestion: questions.get(row.id) || '',
     resume: resumeCommand(row.directory, row.id),
-    ...(process.platform === 'win32' ? { resumeShell: 'PowerShell' } : {}),
+    ...(process.platform === 'win32' ? { resumeShell: '命令提示符（CMD）或 PowerShell' } : {}),
     ...metadata.sessions[row.id],
   };
 }
@@ -218,7 +219,7 @@ function sessionHeader(s) {
   return {
     id: s.id, title: s.title, projectId: who.id, identitySource: who.identitySource, directory: s.directory,
     resume: resumeCommand(s.directory, s.id),
-    ...(process.platform === 'win32' ? { resumeShell: 'PowerShell' } : {}),
+    ...(process.platform === 'win32' ? { resumeShell: '命令提示符（CMD）或 PowerShell' } : {}),
   };
 }
 

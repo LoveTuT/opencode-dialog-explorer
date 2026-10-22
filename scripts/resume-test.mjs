@@ -6,5 +6,6 @@ assert.equal(resumeCommand('', id, 'darwin'), `opencode --session ${id}`);
 assert.equal(resumeCommand('/Users/Ada/Work files', id, 'darwin'), `opencode '/Users/Ada/Work files' --session ${id}`);
 assert.equal(resumeCommand("/Users/Ada/O'Brien/$notes", id, 'darwin'), `opencode '/Users/Ada/O'\\''Brien/$notes' --session ${id}`);
 assert.equal(resumeCommand('/mnt/d/Work files', id, 'linux'), `opencode '/mnt/d/Work files' --session ${id}`);
-assert.equal(resumeCommand("D:\\Ada's Work\\$notes", id, 'win32'), `opencode 'D:\\Ada''s Work\\$notes' --session ${id}`);
+assert.equal(resumeCommand('D:\\Work files', id, 'win32'), `opencode "D:\\Work files" --session ${id}`);
+assert.equal(resumeCommand("D:\\Ada's Work\\$notes", id, 'win32'), `opencode "D:\\Ada's Work\\$notes" --session ${id}`);
 console.log('resume commands: PASS');
